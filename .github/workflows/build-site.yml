@@ -31,7 +31,7 @@ jobs:
     - name: Install R dependencies
       run: |
         install.packages(c("rmarkdown", "here", "haven", "tidyverse", 
-                          "zoo", "DT", "lubridate", "yaml"))
+                  "zoo", "DT", "lubridate", "yaml", "sjlabelled"))
       shell: Rscript {0}
       
     - name: Process data and build site
