@@ -1,5 +1,43 @@
 # functions.R - Helper functions for RAPID Open Responses processing
 
+# Helper functions
+moe.p = function(p, n){
+    q = 1-p
+    moe = 1.96*sqrt((p*q)/n)
+    return(moe)
+}
+
+moe.m = function(sd,n){
+    moe = 1.96*sd/sqrt(n)
+    return(moe)
+}
+
+combine.cat = function(x, cols, id, newvar.name){
+    subset = x[,c(id, "Week", cols)]
+    names(subset) = c("id", "Week", paste0("X",1:length(cols)))
+    subset = suppressWarnings(gather(subset, "key", "value", -id, -Week))
+    subset = filter(subset, !is.na(value))
+    subset$key = gsub("X", "", subset$key)
+    subset = group_by(subset, id, Week)
+    subset = summarise(subset, newvar = paste(key, collapse = ",")) %>% ungroup()
+    names(subset) = c(id,"Week", newvar.name)
+    x = suppressMessages(full_join(x, subset))
+    return(x)
+}
+
+find_items = function(string, data2){
+    items = names(data2)
+    locations = which(grepl(string, items))
+    final = items[locations]
+    return(final)
+}
+
+my.max = function(x) ifelse (!all(is.na(x)), max(x,na.rm = TRUE), NA)
+my.min = function(x) ifelse (!all(is.na(x)), min(x,na.rm = TRUE), NA)
+
+monnb <- function(d) { lt <- as.POSIXlt(as.Date(d, origin="1900-01-01")); lt$year*12 + lt$mon }
+mondf <- function(d1, d2) { monnb(d2) - monnb(d1) }
+
 # Load master data files
 load_master_files <- function() {
     cat("Loading master files...\n")
@@ -33,34 +71,9 @@ load_master_files <- function() {
     list(ec_master = ec_master, cc_master = cc_master)
 }
 
-# Get zipcode data for geocoding
-get_zipcode_data <- function() {
-    cat("Downloading zipcode data...\n")
-    
-    zipcode_url <- "http://download.geonames.org/export/zip/US.zip"
-    temp <- tempfile()
-    
-    tryCatch({
-        download.file(zipcode_url, temp)
-        zipcodes <- read.table(unz(temp, "US.txt"), sep = "\t")
-        names(zipcodes) <- c("CountryCode", "zip", "PlaceName", 
-                             "AdminName1", "State", "AdminName2", "AdminCode2", 
-                             "AdminName3", "AdminCode3", "latitude", "longitude", "accuracy")
-        
-        zipcodes %>%
-            mutate(zip = case_when(
-                nchar(as.character(zip)) == 5 ~ as.character(zip),
-                nchar(as.character(zip)) == 4 ~ paste0("0", zip),
-                nchar(as.character(zip)) == 3 ~ paste0("00", zip),
-                TRUE ~ as.character(zip)
-            ))
-    }, finally = {
-        unlink(temp)
-    })
-}
 
-# Process household (EC) data
-process_ec_data <- function(ec_master, zipcode_data) {
+# Process household (EC) data with proper FPL calculation
+process_ec_data <- function(ec_master) {
     cat("Processing EC response data...\n")
     
     if (is.null(ec_master)) {
@@ -68,49 +81,130 @@ process_ec_data <- function(ec_master, zipcode_data) {
         return(NULL)
     }
     
-    ec_master %>%
-        mutate(
-            zip = as.character(DEMO.001),
-            # Convert Week to Month/Year (adjust base date as needed)
-            date = as.Date("2020-03-01") + weeks(Week - 1),
-            month_year = format(date, "%B %Y"),
-            # Enhanced FPL categories
-            fpl_category = case_when(
-                FPL.2019.150 <= 2.0 ~ "≤ 200% FPL",
-                FPL.2019.150 > 2.0 & FPL.2019.150 <= 4.0 ~ "200-400% FPL", 
-                FPL.2019.150 > 4.0 ~ "> 400% FPL",
-                TRUE ~ "Unknown"
-            ),
-            child_age03 = case_when(
-                DEMO.004.a.2 >= 1 ~ "Yes",
-                !is.na(DEMO.004.a.2) ~ "No",
-                TRUE ~ NA_character_
-            ),
-            Language = case_when(
-                UserLanguage == "EN" ~ "English", 
-                UserLanguage == "SPA" ~ "Spanish",
-                TRUE ~ "Other"
-            )
-        ) %>%
-        left_join(select(zipcode_data, zip, State), by = "zip") %>%
-        select(CaregiverID, Week, month_year, starts_with("OPEN"), 
-               State, fpl_category, zip, Language, RaceGroup, child_age03) %>%
-        filter(OPEN.006 == 1) %>%
-        arrange(Week) %>%
+    # Load FPL line data
+    FPL_line <- read.csv("data/FPL_line.csv")
+    
+    # Calculate poverty status
+    poverty <- ec_master %>%
+        select(CaregiverID, Week, StartDate, allyearly2019, allyearly2020, allyearly2021, 
+               Annual2022Income, Annual2023Income, Annual2024Income, Annual2025Income, 
+               JOB.002, STATE_CODED) %>%
         group_by(CaregiverID) %>%
-        mutate_if(is.labelled, as_factor, levels = "labels") %>%
-        mutate_at(vars(State, fpl_category, RaceGroup, child_age03, zip, Language, month_year), na.locf0) %>%
-        ungroup() %>%
-        select(-OPEN.006) %>%
-        rename(`Child 0-3` = child_age03,
-               `FPL Category` = fpl_category,
-               `Month/Year` = month_year) %>%
-        gather("Question", "Response", starts_with("OPEN")) %>%
-        filter(Response != "" & !is.na(Response))
+        summarise(allyearly2019 = my.max(allyearly2019),
+                  allyearly2020 = my.max(allyearly2020),
+                  allyearly2021 = my.max(allyearly2021),
+                  allyearly2022 = my.max(Annual2022Income),
+                  allyearly2023 = my.max(Annual2023Income),
+                  allyearly2024 = my.max(Annual2024Income),
+                  allyearly2025 = my.max(Annual2025Income),
+                  nhousehold = my.max(JOB.002),
+                  STATE_CODED = my.max(STATE_CODED)) %>%
+        mutate(nhousehold = ifelse(nhousehold < 2, 2, nhousehold))
+    
+    poverty <- merge(x = poverty, y = FPL_line, by = c("nhousehold", "STATE_CODED"), all.x = T)
+    
+    poverty <- poverty %>%
+        mutate(FPL_pct19 = allyearly2019/FPL_line_2019,
+               FPL_pct20 = allyearly2020/FPL_line_2020,
+               FPL_pct21 = allyearly2021/FPL_line_2021, 
+               FPL_pct22 = allyearly2022/FPL_line_2022,
+               FPL_pct23 = allyearly2023/FPL_line_2023,
+               FPL_pct24 = allyearly2024/FPL_line_2024,
+               FPL_pct25 = allyearly2025/FPL_line_2025,
+               FPL_pct_merge = case_when(is.na(FPL_pct25) == F ~ FPL_pct25,
+                                         is.na(FPL_pct25) == T & is.na(FPL_pct24) == F ~ FPL_pct24,
+                                         is.na(FPL_pct25) == T & is.na(FPL_pct24) == T & is.na(FPL_pct23) == F ~ FPL_pct23,
+                                         is.na(FPL_pct25) == T & is.na(FPL_pct24) == T & is.na(FPL_pct23) == T & is.na(FPL_pct22) == F ~ FPL_pct22,
+                                         is.na(FPL_pct25) == T & is.na(FPL_pct24) == T & is.na(FPL_pct23) == T & is.na(FPL_pct22) == T & 
+                                             is.na(FPL_pct21) == F ~ FPL_pct21,
+                                         is.na(FPL_pct25) == T & is.na(FPL_pct24) == T & is.na(FPL_pct23) == T & is.na(FPL_pct22) == T & is.na(FPL_pct21) == T & 
+                                             is.na(FPL_pct20) == F ~ FPL_pct20,
+                                         is.na(FPL_pct25) == T & is.na(FPL_pct24) == T & is.na(FPL_pct23) == T & is.na(FPL_pct22) == T & is.na(FPL_pct21) == T & 
+                                             is.na(FPL_pct20) == T & is.na(FPL_pct19) == F ~ FPL_pct19)) %>%
+        mutate(poverty = case_when(FPL_pct_merge < 2 ~ "≤ 200% FPL",
+                                   FPL_pct_merge >= 2 & FPL_pct_merge < 4 ~ "200-400% FPL", 
+                                   FPL_pct_merge >= 4 ~ "> 400% FPL",
+                                   TRUE ~ "Unknown")) %>%
+        select(CaregiverID, poverty)
+    
+    # Process disability status
+    ec_master <- combine.cat(x = ec_master, 
+                             cols = find_items("HEALTH.005_[0-9]{1}$", ec_master), 
+                             id = "CaregiverID",
+                             newvar.name = "HEALTH.005_cat")
+    
+    ec_master <- ec_master %>%
+        mutate(disability = case_when(HEALTH.005_1 == 1 ~ 1,
+                                      HEALTH.005_2 == 1 ~ 1,
+                                      HEALTH.005_3 == 1 ~ 1,
+                                      HEALTH.005_4 == 1 ~ 1,
+                                      HEALTH.005_5 == 1 ~ 0,
+                                      HEALTH.005_997 == 1 ~ 1,
+                                      HEALTH.005.2 == 1 ~ 1,
+                                      HEALTH.005.2 == 0 ~ 0,
+                                      TRUE ~ NA_real_))
+    
+    # Process family structure
+    ec_master <- ec_master %>%
+        mutate(single = case_when(Week < 9 & DEMO.002 %in% c(3,4,5,7,8) ~ 1, 
+                                  Week < 9 & DEMO.002 %in% c(1, 2) ~ 0, 
+                                  Week >= 9 & Week < 78 & DEMO.011 %in% c(2,4) ~ 1,
+                                  Week >= 9 & Week < 78 & DEMO.011 %in% c(1) ~ 0,
+                                  Week >= 78 & (DEMO.011.2_2 == 1 | DEMO.011.2_3 == 1 | DEMO.011.2_4 == 1 |
+                                                    DEMO.011.2_5 == 1 | DEMO.011.2_6 == 1 | DEMO.011.2_7 == 1) ~ 1,
+                                  Week >= 78 & DEMO.011.2_1 == 1 ~ 0,
+                                  TRUE ~ NA_real_))
+}
+
+# Create demographic summary
+master_dem <- ec_master %>%
+    group_by(CaregiverID) %>%
+    summarise(disability = my.max(disability),
+              single = my.max(single)) %>%
+    mutate(disability = case_when(disability == 1 ~ "With disability", 
+                                  disability == 0 ~ "Without disability", 
+                                  TRUE ~ NA_character_),
+           single = case_when(single == 1 ~ "Non-dual parent", 
+                              single == 0 ~ "Dual parents", 
+                              TRUE ~ NA_character_))
+
+# Main processing
+ec_master %>%
+    mutate(
+        month_year = format(as.Date(StartDate), "%m/%Y"),
+        child_age03 = case_when(
+            DEMO.004.a.2 >= 1 ~ "Yes",
+            !is.na(DEMO.004.a.2) ~ "No",
+            TRUE ~ NA_character_
+        ),
+        Language = case_when(
+            UserLanguage == "EN" ~ "English", 
+            UserLanguage == "SPA" ~ "Spanish",
+            TRUE ~ "Other"
+        )
+    ) %>%
+    left_join(poverty, by = "CaregiverID") %>%
+    left_join(master_dem, by = "CaregiverID") %>%
+    select(CaregiverID, Week, month_year, starts_with("OPEN"), 
+           poverty, Language, RaceGroup, child_age03, disability, single) %>%
+    filter(OPEN.006 == 1) %>%
+    arrange(Week) %>%
+    group_by(CaregiverID) %>%
+    mutate_if(is.labelled, as_factor, levels = "labels") %>%
+    mutate_at(vars(poverty, RaceGroup, child_age03, Language, month_year, disability, single), na.locf0) %>%
+    ungroup() %>%
+    select(-OPEN.006) %>%
+    rename(`Child 0-3` = child_age03,
+           `FPL Category` = poverty,
+           `Month/Year` = month_year,
+           `Child Disability` = disability,
+           `Family Structure` = single) %>%
+    gather("Question", "Response", starts_with("OPEN")) %>%
+    filter(Response != "" & !is.na(Response))
 }
 
 # Process provider (CC) data  
-process_cc_data <- function(cc_master, zipcode_data) {
+process_cc_data <- function(cc_master) {
     cat("Processing CC response data...\n")
     
     if (is.null(cc_master)) {
@@ -118,152 +212,45 @@ process_cc_data <- function(cc_master, zipcode_data) {
         return(NULL)
     }
     
-    cc_master %>%
-        mutate(
-            zip = as.character(CC.DEMO.001),
-            date = as.Date("2021-03-01") + weeks(Week - 1),
-            month_year = format(date, "%B %Y"),
-            fpl_category = case_when(
-                FPL.2019.150 <= 2.0 ~ "≤ 200% FPL",
-                FPL.2019.150 > 2.0 & FPL.2019.150 <= 4.0 ~ "200-400% FPL",
-                FPL.2019.150 > 4.0 ~ "> 400% FPL", 
-                TRUE ~ "Unknown"
-            ),
-            provider_type = case_when(
-                CC.DEMO.013_1 == 1 ~ "Center teacher",
-                CC.DEMO.013_2 == 1 ~ "Center director", 
-                CC.DEMO.013_3 == 1 | CC.DEMO.013_4 == 1 | CC.DEMO.013_8 == 1 | 
-                    CC.DEMO.013_12 == 1 | CC.DEMO.013_9 == 1 | CC.DEMO.013_13 == 1 ~ "Home-based provider",
-                CC.DEMO.013_5 == 1 ~ "FFN",
-                CC.DEMO.013_6 == 1 | CC.DEMO.013_10 == 1 | CC.DEMO.013_11 == 1 ~ "Babysitter/nanny",
-                TRUE ~ "Other"
-            ),
-            Language = case_when(
-                UserLanguage == "EN" ~ "English",
-                UserLanguage == "SPA" ~ "Spanish", 
-                TRUE ~ "Other"
-            )
-        ) %>%
-        left_join(select(zipcode_data, zip, State), by = "zip") %>%
-        select(ProviderID, Week, month_year, starts_with("CC.OPEN"),
-               State, fpl_category, zip, RaceGroup, provider_type, Language) %>%
-        filter(CC.OPEN.007 == 1) %>%
-        arrange(Week) %>%
+    # Load FPL line data
+    FPL_line <- read.csv("data/FPL_line.csv")
+    
+    # Calculate poverty status for CC
+    poverty <- cc_master %>%
+        select(ProviderID, Week, StartDate, Annual2020Income, Annual2021Income, Annual2022Income, 
+               Annual2023Income, Annual2024Income, Annual2025Income, CC.JOB.002.b, CC.JOB.003.b, STATE_CODED) %>%
+        mutate(nhousehold = case_when(is.na(CC.JOB.003.b) == F ~ CC.JOB.003.b,
+                                      is.na(CC.JOB.003.b) == T & is.na(CC.JOB.002.b) == F ~ CC.JOB.002.b)) %>%
         group_by(ProviderID) %>%
-        mutate_if(is.labelled, as_factor, levels = "labels") %>%
-        mutate_at(vars(State, fpl_category, zip, RaceGroup, provider_type, Language, month_year), na.locf0) %>%
-        ungroup() %>%
-        select(-CC.OPEN.007) %>%
-        rename(`FPL Category` = fpl_category,
-               `Month/Year` = month_year,
-               `Provider Type` = provider_type) %>%
-        gather("Question", "Response", starts_with("CC.OPEN")) %>%
-        filter(Response != "" & !is.na(Response))
+        summarise(Annual2020Income = my.max(Annual2020Income),
+                  Annual2021Income = my.max(Annual2021Income),
+                  Annual2022Income = my.max(Annual2022Income),
+                  Annual2023Income = my.max(Annual2023Income),
+                  Annual2024Income = my.max(Annual2024Income),
+                  Annual2025Income = my.max(Annual2025Income),
+                  nhousehold = my.max(nhousehold),
+                  STATE_CODED = my.max(STATE_CODED))
+    
+    poverty <- merge(x = poverty, y = FPL_line, by = c("nhousehold", "STATE_CODED"), all.x = T)
+    
+    poverty <- poverty %>%
+        mutate(FPL_pct20 = Annual2020Income/FPL_line_2020,
+               FPL_pct21 = Annual2021Income/FPL_line_2021,
+               FPL_pct22 = Annual2022Income/FPL_line_2022,
+               FPL_pct23 = Annual2023Income/FPL_line_2023,
+               FPL_pct24 = Annual2024Income/FPL_line_2024,
+               FPL_pct25 = Annual2025Income/FPL_line_2025,
+               FPL_pct_merge = case_when(is.na(FPL_pct25) == F ~ FPL_pct25,
+                                         is.na(FPL_pct25) == T & is.na(FPL_pct24) == F ~ FPL_pct24,
+                                         is.na(FPL_pct24) == T & is.na(FPL_pct23) == F ~ FPL_pct23,
+                                         is.na(FPL_pct24) == T & is.na(FPL_pct23) == T & is.na(FPL_pct22) == F ~ FPL_pct22,
+                                         is.na(FPL_pct24) == T & is.na(FPL_pct23) == T & is.na(FPL_pct22) == T & is.na(FPL_pct21) == F ~ FPL_pct21,
+                                         is.na(FPL_pct24) == T & is.na(FPL_pct23) == T & is.na(FPL_pct22) == T & is.na(FPL_pct21) == T & is.na(FPL_pct20) == F ~ FPL_pct20)) %>%
+        mutate(poverty = case_when(FPL_pct_merge < 2 ~ "≤ 200% FPL",
+                                   FPL_pct_merge >= 2 & FPL_pct_merge < 4 ~ "200-400% FPL",
+                                   FPL_pct_merge >= 4 ~ "> 400% FPL",
+                                   TRUE ~ "Unknown")) %>%
+        select(ProviderID, poverty)
 }
-
-# Get EC question list
-get_ec_questions <- function(ec_master) {
-    if (is.null(ec_master)) return(list(names = character(0), text = character(0), numbers = integer(0)))
     
-    ec_questions <- ec_master %>% 
-        select(starts_with("OPEN")) %>%
-        select(-OPEN.006)  # Remove the filter variable
     
-    q_text <- sjlabelled::get_label(ec_questions)
-    q_names <- names(ec_questions)
-    q_numbers <- seq_along(q_names)
-    
-    list(names = q_names, text = q_text, numbers = q_numbers)
-}
-
-# Get CC question list  
-get_cc_questions <- function(cc_master) {
-    if (is.null(cc_master)) return(list(names = character(0), text = character(0), numbers = integer(0)))
-    
-    cc_questions <- cc_master %>%
-        select(starts_with("CC.OPEN")) %>%
-        select(-CC.OPEN.007)  # Remove the filter variable
-    
-    q_text <- sjlabelled::get_label(cc_questions)
-    q_names <- names(cc_questions)
-    q_numbers <- seq_along(q_names)
-    
-    list(names = q_names, text = q_text, numbers = q_numbers)
-}
-
-# Generate _site.yml automatically
-generate_site_yml <- function(ec_questions, cc_questions) {
-    cat("Generating _site.yml file...\n")
-    
-    # Create household menu items
-    household_items <- map2(ec_questions$numbers, ec_questions$text, ~{
-        list(
-            text = paste0("OPEN.", sprintf("%03d", .x), ": ", str_trunc(.y, 60)),
-            href = paste0("ec_responses_", .x, ".html")
-        )
-    })
-    
-    # Create provider menu items
-    provider_items <- map2(cc_questions$numbers, cc_questions$text, ~{
-        list(
-            text = paste0("CC.OPEN.", sprintf("%03d", .x), ": ", str_trunc(.y, 60)), 
-            href = paste0("cc_responses_", .x, ".html")
-        )
-    })
-    
-    # Create site structure
-    site_yml <- list(
-        name = "RAPID Open-ended Questions",
-        navbar = list(
-            title = "Open-ended Questions",
-            left = list(
-                list(
-                    text = "Household Response Tables",
-                    menu = household_items
-                ),
-                list(
-                    text = "Provider Response Tables", 
-                    menu = provider_items
-                )
-            ),
-            right = list(
-                list(
-                    icon = "fa-github",
-                    href = "https://github.com/prisharma3/rapid-open-responses"
-                )
-            )
-        ),
-        output_dir = "_site"
-    )
-    
-    # Write to _site.yml
-    write_yaml(site_yml, "_site.yml")
-}
-
-# Generate response reports
-generate_response_reports <- function(data_type, questions, response_data) {
-    if (is.null(response_data) || length(questions$numbers) == 0) {
-        cat("No data or questions found for", data_type, "\n")
-        return()
-    }
-    
-    template_file <- paste0("_template_responses_", toupper(data_type), ".Rmd")
-    
-    for (i in seq_along(questions$numbers)) {
-        output_file <- paste0(data_type, "_responses_", questions$numbers[i], ".html")
-        
-        cat("Generating:", output_file, "\n")
-        
-        rmarkdown::render(
-            input = template_file,
-            output_file = output_file,
-            params = list(
-                title = paste("Question", questions$numbers[i]),
-                question = questions$text[i],
-                variable = questions$names[i],
-                data = response_data
-            ),
-            quiet = TRUE
-        )
-    }
-}
