@@ -26,3 +26,6 @@ cat("Processing provider data...\n")
 cc_response_table <- process_cc_data(master_data$cc_master)
 
 cat("Data processing completed successfully!\n")
+
+
+view(master_data)

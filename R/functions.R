@@ -43,8 +43,8 @@ load_master_files <- function() {
     cat("Loading master files...\n")
     
     # Hardcode the file paths
-    ec_files <- "data/MasterFile_groupings_2021.sav"
-    cc_files <- "data/CC.MasterFile_groupings_2021.sav"
+    ec_files <- "data/MasterFile_groupings_2025.sav"
+    cc_files <- "data/CC.MasterFile_groupings_2025.sav"
     
     # Load EC files
     ec_master <- read_sav(ec_files)
