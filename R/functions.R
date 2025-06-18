@@ -201,7 +201,7 @@ ec_master %>%
            `Family Structure` = single) %>%
     gather("Question", "Response", starts_with("OPEN")) %>%
     filter(Response != "" & !is.na(Response))
-}
+
 
 # Process provider (CC) data  
 process_cc_data <- function(cc_master) {
