@@ -43,30 +43,41 @@ load_master_files <- function() {
     cat("Loading master files...\n")
     
     # Find all EC master files (2020-2024)
-    ec_files <- list.files("data", pattern = "MasterFile_groupings_\\d{4}\\.sav$", full.names = TRUE)
-    
-    # Find all CC master files (2021-2024) 
-    cc_files <- list.files("data", pattern = "CC\\.MasterFile_groupings_\\d{4}\\.sav$", full.names = TRUE)
+    # ec_files <- list.files("data", pattern = "MasterFile_groupings_\\d{4}\\.sav$", full.names = TRUE)
+    # 
+    # # Find all CC master files (2021-2024) 
+    # cc_files <- list.files("data", pattern = "CC\\.MasterFile_groupings_\\d{4}\\.sav$", full.names = TRUE)
+    # 
+    # # Load EC files
+    # ec_master <- NULL
+    # if (length(ec_files) > 0) {
+    #     ec_data_list <- map(ec_files, ~{
+    #         cat("Loading:", .x, "\n")
+    #         read_sav(.x)
+    #     })
+    #     ec_master <- reduce(ec_data_list, full_join)
+    # }
+    # 
+    # # Load CC files
+    # cc_master <- NULL
+    # if (length(cc_files) > 0) {
+    #     cc_data_list <- map(cc_files, ~{
+    #         cat("Loading:", .x, "\n") 
+    #         read_sav(.x)
+    #     })
+    #     cc_master <- reduce(cc_data_list, full_join)
+    # }
+    # 
+    # list(ec_master = ec_master, cc_master = cc_master)
+    # Hardcode the file paths
+    ec_files <- "data/MasterFile_groupings_2021.sav"
+    cc_files <- "data/CC.MasterFile_groupings_2021.sav"
     
     # Load EC files
-    ec_master <- NULL
-    if (length(ec_files) > 0) {
-        ec_data_list <- map(ec_files, ~{
-            cat("Loading:", .x, "\n")
-            read_sav(.x)
-        })
-        ec_master <- reduce(ec_data_list, full_join)
-    }
+    ec_master <- read_sav(ec_files)
     
-    # Load CC files
-    cc_master <- NULL
-    if (length(cc_files) > 0) {
-        cc_data_list <- map(cc_files, ~{
-            cat("Loading:", .x, "\n") 
-            read_sav(.x)
-        })
-        cc_master <- reduce(cc_data_list, full_join)
-    }
+    # Load CC files  
+    cc_master <- read_sav(cc_files)
     
     list(ec_master = ec_master, cc_master = cc_master)
 }
