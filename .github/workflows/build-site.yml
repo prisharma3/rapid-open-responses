@@ -30,9 +30,9 @@ jobs:
       
     - name: Install R dependencies
       run: |
-        install.packages("pak")
-        pak::pkg_install(c("rmarkdown", "here", "haven", "tidyverse", 
-                          "zoo", "DT", "lubridate", "yaml", "sjlabelled"))
+        install.packages(c("rmarkdown", "here", "haven", "tidyverse", 
+                          "zoo", "DT", "lubridate", "yaml", "sjlabelled"),
+                          repos = "https://cloud.r-project.org/")
       shell: Rscript {0}
       
     - name: Process data and build site
