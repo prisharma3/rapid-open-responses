@@ -30,7 +30,8 @@ jobs:
       
     - name: Install R dependencies
       run: |
-        install.packages(c("rmarkdown", "here", "haven", "tidyverse", 
+        install.packages(c("rmarkdown", "here", "haven", "dplyr", "tidyr", 
+                          "readr", "purrr", "stringr", "ggplot2",
                           "zoo", "DT", "lubridate", "yaml", "sjlabelled"),
                           repos = "https://cloud.r-project.org/")
       shell: Rscript {0}
