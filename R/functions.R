@@ -42,33 +42,6 @@ mondf <- function(d1, d2) { monnb(d2) - monnb(d1) }
 load_master_files <- function() {
     cat("Loading master files...\n")
     
-    # Find all EC master files (2020-2024)
-    # ec_files <- list.files("data", pattern = "MasterFile_groupings_\\d{4}\\.sav$", full.names = TRUE)
-    # 
-    # # Find all CC master files (2021-2024) 
-    # cc_files <- list.files("data", pattern = "CC\\.MasterFile_groupings_\\d{4}\\.sav$", full.names = TRUE)
-    # 
-    # # Load EC files
-    # ec_master <- NULL
-    # if (length(ec_files) > 0) {
-    #     ec_data_list <- map(ec_files, ~{
-    #         cat("Loading:", .x, "\n")
-    #         read_sav(.x)
-    #     })
-    #     ec_master <- reduce(ec_data_list, full_join)
-    # }
-    # 
-    # # Load CC files
-    # cc_master <- NULL
-    # if (length(cc_files) > 0) {
-    #     cc_data_list <- map(cc_files, ~{
-    #         cat("Loading:", .x, "\n") 
-    #         read_sav(.x)
-    #     })
-    #     cc_master <- reduce(cc_data_list, full_join)
-    # }
-    # 
-    # list(ec_master = ec_master, cc_master = cc_master)
     # Hardcode the file paths
     ec_files <- "data/MasterFile_groupings_2021.sav"
     cc_files <- "data/CC.MasterFile_groupings_2021.sav"
@@ -81,7 +54,6 @@ load_master_files <- function() {
     
     list(ec_master = ec_master, cc_master = cc_master)
 }
-
 
 # Process household (EC) data with proper FPL calculation
 process_ec_data <- function(ec_master) {
@@ -165,54 +137,55 @@ process_ec_data <- function(ec_master) {
                                                     DEMO.011.2_5 == 1 | DEMO.011.2_6 == 1 | DEMO.011.2_7 == 1) ~ 1,
                                   Week >= 78 & DEMO.011.2_1 == 1 ~ 0,
                                   TRUE ~ NA_real_))
+    
+    # Create demographic summary
+    master_dem <- ec_master %>%
+        group_by(CaregiverID) %>%
+        summarise(disability = my.max(disability),
+                  single = my.max(single)) %>%
+        mutate(disability = case_when(disability == 1 ~ "With disability", 
+                                      disability == 0 ~ "Without disability", 
+                                      TRUE ~ NA_character_),
+               single = case_when(single == 1 ~ "Non-dual parent", 
+                                  single == 0 ~ "Dual parents", 
+                                  TRUE ~ NA_character_))
+    
+    # Main processing and return result
+    result <- ec_master %>%
+        mutate(
+            month_year = format(as.Date(StartDate), "%m/%Y"),
+            child_age03 = case_when(
+                DEMO.004.a.2 >= 1 ~ "Yes",
+                !is.na(DEMO.004.a.2) ~ "No",
+                TRUE ~ NA_character_
+            ),
+            Language = case_when(
+                UserLanguage == "EN" ~ "English", 
+                UserLanguage == "SPA" ~ "Spanish",
+                TRUE ~ "Other"
+            )
+        ) %>%
+        left_join(poverty, by = "CaregiverID") %>%
+        left_join(master_dem, by = "CaregiverID") %>%
+        select(CaregiverID, Week, month_year, starts_with("OPEN"), 
+               poverty, Language, RaceGroup, child_age03, disability, single) %>%
+        filter(OPEN.006 == 1) %>%
+        arrange(Week) %>%
+        group_by(CaregiverID) %>%
+        mutate_if(is.labelled, as_factor, levels = "labels") %>%
+        mutate_at(vars(poverty, RaceGroup, child_age03, Language, month_year, disability, single), na.locf0) %>%
+        ungroup() %>%
+        select(-OPEN.006) %>%
+        rename(`Child 0-3` = child_age03,
+               `FPL Category` = poverty,
+               `Month/Year` = month_year,
+               `Child Disability` = disability,
+               `Family Structure` = single) %>%
+        gather("Question", "Response", starts_with("OPEN")) %>%
+        filter(Response != "" & !is.na(Response))
+    
+    return(result)
 }
-
-# Create demographic summary
-master_dem <- ec_master %>%
-    group_by(CaregiverID) %>%
-    summarise(disability = my.max(disability),
-              single = my.max(single)) %>%
-    mutate(disability = case_when(disability == 1 ~ "With disability", 
-                                  disability == 0 ~ "Without disability", 
-                                  TRUE ~ NA_character_),
-           single = case_when(single == 1 ~ "Non-dual parent", 
-                              single == 0 ~ "Dual parents", 
-                              TRUE ~ NA_character_))
-
-# Main processing
-ec_master %>%
-    mutate(
-        month_year = format(as.Date(StartDate), "%m/%Y"),
-        child_age03 = case_when(
-            DEMO.004.a.2 >= 1 ~ "Yes",
-            !is.na(DEMO.004.a.2) ~ "No",
-            TRUE ~ NA_character_
-        ),
-        Language = case_when(
-            UserLanguage == "EN" ~ "English", 
-            UserLanguage == "SPA" ~ "Spanish",
-            TRUE ~ "Other"
-        )
-    ) %>%
-    left_join(poverty, by = "CaregiverID") %>%
-    left_join(master_dem, by = "CaregiverID") %>%
-    select(CaregiverID, Week, month_year, starts_with("OPEN"), 
-           poverty, Language, RaceGroup, child_age03, disability, single) %>%
-    filter(OPEN.006 == 1) %>%
-    arrange(Week) %>%
-    group_by(CaregiverID) %>%
-    mutate_if(is.labelled, as_factor, levels = "labels") %>%
-    mutate_at(vars(poverty, RaceGroup, child_age03, Language, month_year, disability, single), na.locf0) %>%
-    ungroup() %>%
-    select(-OPEN.006) %>%
-    rename(`Child 0-3` = child_age03,
-           `FPL Category` = poverty,
-           `Month/Year` = month_year,
-           `Child Disability` = disability,
-           `Family Structure` = single) %>%
-    gather("Question", "Response", starts_with("OPEN")) %>%
-    filter(Response != "" & !is.na(Response))
-
 
 # Process provider (CC) data  
 process_cc_data <- function(cc_master) {
@@ -262,6 +235,31 @@ process_cc_data <- function(cc_master) {
                                    FPL_pct_merge >= 4 ~ "> 400% FPL",
                                    TRUE ~ "Unknown")) %>%
         select(ProviderID, poverty)
+    
+    # Main processing and return result
+    result <- cc_master %>%
+        mutate(
+            month_year = format(as.Date(StartDate), "%m/%Y"),
+            Language = case_when(
+                UserLanguage == "EN" ~ "English", 
+                UserLanguage == "SPA" ~ "Spanish",
+                TRUE ~ "Other"
+            )
+        ) %>%
+        left_join(poverty, by = "ProviderID") %>%
+        select(ProviderID, Week, month_year, starts_with("CC.OPEN"), 
+               poverty, Language, RaceGroup, STATE_CODED) %>%
+        arrange(Week) %>%
+        group_by(ProviderID) %>%
+        mutate_if(is.labelled, as_factor, levels = "labels") %>%
+        mutate_at(vars(poverty, Language, month_year), na.locf0) %>%
+        ungroup() %>%
+        rename(`FPL Category` = poverty,
+               `Month/Year` = month_year,
+               `State` = STATE_CODED,
+               `Provider Type` = RaceGroup) %>%
+        gather("Question", "Response", starts_with("CC.OPEN")) %>%
+        filter(Response != "" & !is.na(Response))
+    
+    return(result)
 }
-    
-    
