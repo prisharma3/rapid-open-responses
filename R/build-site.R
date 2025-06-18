@@ -25,11 +25,11 @@ zipcode_data <- get_zipcode_data()
 
 # 3. Process household (EC) data
 cat("Processing household data...\n")
-ec_response_table <- process_ec_data(master_data$ec_master, zipcode_data)
+ec_response_table <- process_ec_data(master_data$ec_master)
 
 # 4. Process provider (CC) data  
 cat("Processing provider data...\n")
-cc_response_table <- process_cc_data(master_data$cc_master, zipcode_data)
+cc_response_table <- process_cc_data(master_data$cc_master)
 
 # 5. Get question lists
 ec_questions <- get_ec_questions(master_data$ec_master)
