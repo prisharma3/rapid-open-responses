@@ -260,18 +260,32 @@
             document.getElementById('loadingMessage').style.display = 'block';
             document.getElementById('dataTable').style.display = 'none';
             
-            // Filter data for responses to this question
-            const filteredData = currentData.data
-                .map((row, index) => ({
-                    ID: currentSurveyType === 'household' ? `EC_${index + 1}` : `CC_${index + 1}`,
-                    Response: row[selectedQuestion] || '',
-                    Month: row.month || '',
-                    Poverty: row.poverty || '',
-                    'Child Disability': row['child disability'] || '',
-                    'Family Structure': row['family structure'] || ''
-                }))
-                .filter(row => row.Response.trim() !== '');
+            console.log('Loading question:', selectedQuestion);
+            console.log('Available data:', currentData.data[0]);
             
+            // Create table data using the exact column names from CSV
+            const filteredData = [];
+            currentData.data.forEach((row, index) => {
+                const response = row[selectedQuestion];
+                if (response && response.trim() !== '') {
+                    const tableRow = {
+                        ID: currentSurveyType === 'household' ? `EC_${index + 1}` : `CC_${index + 1}`,
+                        Response: response,
+                        Month: row['month'] || '',
+                        Poverty: row['poverty'] || ''
+                    };
+                    
+                    // Add household-specific columns if they exist
+                    if (currentSurveyType === 'household') {
+                        if (row['child disability']) tableRow['Child Disability'] = row['child disability'];
+                        if (row['family structure']) tableRow['Family Structure'] = row['family structure'];
+                    }
+                    
+                    filteredData.push(tableRow);
+                }
+            });
+            
+            console.log('Filtered data for table:', filteredData);
             createDataTable(filteredData);
         }
 
@@ -287,22 +301,28 @@
                 return;
             }
             
+            console.log('Creating table with data:', data);
+            
+            // Create columns based on what's actually in the data
+            const sampleRow = data[0];
+            const columns = Object.keys(sampleRow).map(key => ({
+                title: key,
+                data: key,
+                width: key === 'Response' ? '50%' : 
+                       key === 'ID' ? '8%' : '12%'
+            }));
+            
+            console.log('Table columns:', columns);
+            
             dataTable = $('#dataTable').DataTable({
                 data: data,
-                columns: [
-                    { title: "ID", data: "ID", width: "8%" },
-                    { title: "Response", data: "Response", width: "50%" },
-                    { title: "Month", data: "Month", width: "10%" },
-                    { title: "Poverty", data: "Poverty", width: "12%" },
-                    { title: "Child Disability", data: "Child Disability", width: "10%" },
-                    { title: "Family Structure", data: "Family Structure", width: "10%" }
-                ],
+                columns: columns,
                 pageLength: 25,
                 scrollX: true,
                 autoWidth: false,
                 dom: 'Bfrtip',
                 buttons: ['copy', 'csv', 'excel'],
-                order: [[2, 'desc']], // Sort by month
+                order: [[columns.findIndex(col => col.data === 'Month') || 0, 'desc']],
                 initComplete: function() {
                     // Add individual column filters
                     this.api().columns().every(function() {
