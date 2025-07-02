@@ -209,23 +209,30 @@
             
             const headers = lines[0].split(delimiter).map(h => h.trim().replace(/"/g, ''));
             console.log('Headers:', headers);
+            console.log('Number of headers:', headers.length);
             const data = [];
             
             for (let i = 1; i < lines.length; i++) {
                 if (lines[i].trim()) {
                     const values = lines[i].split(delimiter).map(v => v.trim().replace(/"/g, ''));
+                    console.log(`Line ${i}: ${values.length} values vs ${headers.length} headers`);
                     if (values.length === headers.length) {
                         const row = {};
                         headers.forEach((header, index) => {
                             row[header] = values[index];
                         });
                         data.push(row);
+                    } else {
+                        console.log(`Skipping line ${i}: value count mismatch`);
                     }
                 }
             }
             console.log('Parsed data:', data.length, 'rows');
             console.log('Sample row:', data[0]);
-            return { headers, data };
+            
+            const result = { headers, data };
+            console.log('Returning result:', result);
+            return result;
         }
 
         // Load CSV data
@@ -258,6 +265,12 @@
                 
                 currentData = await loadCSV(filename);
                 
+                console.log('currentData after loadCSV:', currentData);
+                console.log('currentData type:', typeof currentData);
+                console.log('currentData.data:', currentData?.data);
+                console.log('currentData.headers:', currentData?.headers);
+                console.log('Data array length:', currentData?.data?.length);
+                
                 if (currentData && currentData.data && currentData.headers) {
                     console.log('Data loaded successfully, rows:', currentData.data.length);
                     populateQuestionDropdown();
@@ -265,6 +278,9 @@
                     updateView(); // Load default view
                 } else {
                     console.error('No data loaded or empty dataset');
+                    console.error('currentData exists:', !!currentData);
+                    console.error('currentData.data exists:', !!(currentData && currentData.data));
+                    console.error('currentData.headers exists:', !!(currentData && currentData.headers));
                     alert('Error loading data file: ' + filename);
                 }
             } catch (error) {
