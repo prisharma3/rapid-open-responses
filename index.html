@@ -276,55 +276,49 @@
         let viewMode = 'select'; // 'all' or 'select'
         let selectedQuestions = [];
 
-        // Sample data - replace with actual CSV loading
-        const sampleHouseholdData = [
-            {
-                month: "2024-01", 
-                poverty: "Yes", 
-                "child disability": "No", 
-                "family structure": "Two-parent",
-                "What are the biggest challenges and concerns for you and your family right now?": "Financial stress due to job uncertainty and rising costs of childcare.",
-                "What is helping you and your family the most right now?": "Community support programs and family assistance.",
-                "What would you like your elected officials or other policymakers to know?": "We need more affordable childcare options and job security."
-            },
-            {
-                month: "2024-02", 
-                poverty: "No", 
-                "child disability": "Yes", 
-                "family structure": "Single-parent",
-                "What are the biggest challenges and concerns for you and your family right now?": "Finding specialized care for my child with disabilities while working full-time.",
-                "What is helping you and your family the most right now?": "School support services and therapy programs.",
-                "What would you like your elected officials or other policymakers to know?": "More funding needed for special needs support services."
-            }
-            // Add more sample data as needed
-        ];
-
-        const sampleProviderData = [
-            {
-                month: "2024-01", 
-                poverty: "No",
-                "What are the biggest challenges and concerns for you as a child care provider right now?": "Staff shortages and maintaining quality care with limited resources.",
-                "What is helping you as a child care provider the most right now?": "Professional development opportunities and parent cooperation.",
-                "What would you like your elected officials or other policymakers to know about child care providers?": "We need better compensation and professional recognition."
-            },
-            {
-                month: "2024-02", 
-                poverty: "Yes",
-                "What are the biggest challenges and concerns for you as a child care provider right now?": "Rising operational costs and difficulty attracting qualified staff.",
-                "What is helping you as a child care provider the most right now?": "Government grants and community partnerships.",
-                "What would you like your elected officials or other policymakers to know about child care providers?": "Sustainable funding models are essential for quality care."
-            }
-        ];
-
-        // Parse TSV/CSV data
-        function parseCSV(text, delimiter = '\t') {
+        // Parse CSV data properly handling quoted fields
+        function parseCSV(text) {
             const lines = text.split('\n').filter(line => line.trim());
-            const headers = lines[0].split(delimiter);
+            if (lines.length === 0) return { headers: [], data: [] };
+            
+            // Parse CSV line handling quoted fields properly
+            function parseCSVLine(line) {
+                const result = [];
+                let current = '';
+                let inQuotes = false;
+                let i = 0;
+                
+                while (i < line.length) {
+                    const char = line[i];
+                    
+                    if (char === '"') {
+                        if (inQuotes && line[i + 1] === '"') {
+                            // Handle escaped quotes
+                            current += '"';
+                            i += 2;
+                            continue;
+                        }
+                        inQuotes = !inQuotes;
+                    } else if (char === ',' && !inQuotes) {
+                        result.push(current.trim());
+                        current = '';
+                        i++;
+                        continue;
+                    } else {
+                        current += char;
+                    }
+                    i++;
+                }
+                result.push(current.trim());
+                return result;
+            }
+            
+            const headers = parseCSVLine(lines[0]);
             const data = [];
             
             for (let i = 1; i < lines.length; i++) {
-                const values = lines[i].split(delimiter);
-                if (values.length === headers.length) {
+                const values = parseCSVLine(lines[i]);
+                if (values.length > 0) {
                     const row = {};
                     headers.forEach((header, index) => {
                         row[header] = values[index] || '';
@@ -333,25 +327,37 @@
                 }
             }
             
+            console.log(`Parsed ${data.length} rows with ${headers.length} columns`);
+            console.log('Sample headers:', headers.slice(0, 5));
+            
             return { headers, data };
         }
 
         // Load CSV data
         async function loadCSV(filename) {
+            console.log(`Attempting to load: ${filename}`);
             try {
                 const response = await fetch(filename);
+                console.log(`Response status: ${response.status}`);
+                
                 if (!response.ok) {
-                    throw new Error(`HTTP error! status: ${response.status}`);
+                    throw new Error(`HTTP error! status: ${response.status} for file: ${filename}`);
                 }
                 const text = await response.text();
-                return parseCSV(text);
+                console.log(`File loaded successfully, length: ${text.length}`);
+                
+                const parsed = parseCSV(text);
+                console.log(`Successfully parsed ${parsed.data.length} rows with ${parsed.headers.length} columns`);
+                
+                if (parsed.data.length === 0) {
+                    throw new Error('No data rows found in CSV file');
+                }
+                
+                return parsed;
             } catch (error) {
-                console.error('Error loading CSV:', error);
-                // Use sample data as fallback
-                return {
-                    headers: Object.keys(currentSurveyType === 'household' ? sampleHouseholdData[0] : sampleProviderData[0]),
-                    data: currentSurveyType === 'household' ? sampleHouseholdData : sampleProviderData
-                };
+                console.error(`Failed to load CSV file ${filename}:`, error);
+                alert(`Error loading data file: ${filename}. Please check if the file exists and is properly formatted.`);
+                throw error; // Don't use fallback data, let the error be visible
             }
         }
 
@@ -369,7 +375,7 @@
             document.getElementById('filtersCard').style.display = 'none';
             
             // Load appropriate CSV file
-            const filename = type === 'household' ? 'ecopen_data_consent_filteredt_10_rows.csv' : 'ccopen_data_consent_filteredt_10_rows.csv';
+            const filename = type === 'household' ? 'data/ecopen_data_consent_filteredt_10_rows.csv' : 'data/ccopen_data_consent_filteredt_10_rows.csv';
             currentData = await loadCSV(filename);
             
             if (currentData && currentData.data.length > 0) {
