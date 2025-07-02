@@ -206,27 +206,70 @@
             }
         }
 
+        // Simple CSV parser - handle both comma and tab delimiters
+        function parseCSV(text) {
+            console.log('Raw CSV text (first 500 chars):', text.substring(0, 500));
+            const lines = text.split('\n');
+            console.log('Number of lines:', lines.length);
+            
+            // Detect delimiter - check if first line has more tabs or commas
+            const firstLine = lines[0];
+            const commaCount = (firstLine.match(/,/g) || []).length;
+            const tabCount = (firstLine.match(/\t/g) || []).length;
+            const delimiter = tabCount > commaCount ? '\t' : ',';
+            console.log('Detected delimiter:', delimiter === '\t' ? 'TAB' : 'COMMA');
+            
+            const headers = lines[0].split(delimiter).map(h => h.trim().replace(/"/g, ''));
+            console.log('Headers:', headers);
+            const data = [];
+            
+            for (let i = 1; i < lines.length; i++) {
+                if (lines[i].trim()) {
+                    const values = lines[i].split(delimiter).map(v => v.trim().replace(/"/g, ''));
+                    if (values.length === headers.length) {
+                        const row = {};
+                        headers.forEach((header, index) => {
+                            row[header] = values[index];
+                        });
+                        data.push(row);
+                    }
+                }
+            }
+            console.log('Parsed data:', data.length, 'rows');
+            console.log('Sample row:', data[0]);
+            return { headers, data };
+        }
+
         // Load survey type (household or provider)
         async function loadSurveyType(type) {
-            currentSurveyType = type;
-            
-            // Update button states
-            document.getElementById('householdBtn').className = type === 'household' ? 'btn btn-primary' : 'btn btn-outline-primary';
-            document.getElementById('providerBtn').className = type === 'provider' ? 'btn btn-primary' : 'btn btn-outline-primary';
-            
-            // Hide table while loading
-            document.getElementById('tableCard').style.display = 'none';
-            
-            // Load appropriate CSV file
-            const filename = type === 'household' ? 'data/ecopen_data_consent_filteredt_10_rows.csv' : 'data/ccopen_data_consent_filteredt_10_rows.csv';
-            currentData = await loadCSV(filename);
-            
-            if (currentData) {
-                populateQuestionDropdown();
-                document.getElementById('viewCard').style.display = 'block';
-                updateView(); // Load default view
-            } else {
-                alert('Error loading data file: ' + filename);
+            try {
+                currentSurveyType = type;
+                
+                // Update button states
+                document.getElementById('householdBtn').className = type === 'household' ? 'btn btn-primary' : 'btn btn-outline-primary';
+                document.getElementById('providerBtn').className = type === 'provider' ? 'btn btn-primary' : 'btn btn-outline-primary';
+                
+                // Hide table while loading
+                document.getElementById('tableCard').style.display = 'none';
+                
+                // Load appropriate CSV file
+                const filename = type === 'household' ? 'data/ecopen_data_consent_filteredt_10_rows.csv' : 'data/ccopen_data_consent_filteredt_10_rows.csv';
+                console.log('Loading file:', filename);
+                
+                currentData = await loadCSV(filename);
+                
+                if (currentData && currentData.data && currentData.data.length > 0) {
+                    console.log('Data loaded successfully');
+                    populateQuestionDropdown();
+                    document.getElementById('viewCard').style.display = 'block';
+                    updateView(); // Load default view
+                } else {
+                    console.error('No data loaded or empty dataset');
+                    alert('Error loading data file: ' + filename);
+                }
+            } catch (error) {
+                console.error('Error in loadSurveyType:', error);
+                alert('Error loading survey type: ' + error.message);
             }
         }
 
