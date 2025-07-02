@@ -35,7 +35,13 @@ jobs:
     - name: Verify files exist
       run: |
         echo "Checking for required files..."
+        echo "Repository contents:"
         ls -la
+        echo ""
+        echo "Data folder contents:"
+        ls -la data/
+        echo ""
+        
         if [ ! -f "index.html" ]; then
           echo "Error: index.html not found"
           exit 1
@@ -48,7 +54,10 @@ jobs:
           echo "Error: CC data file not found"
           exit 1
         fi
-        echo "All required files found!"
+        echo "✅ All required files found!"
+        echo "✅ index.html exists"
+        echo "✅ EC data file exists"
+        echo "✅ CC data file exists"
         
     - name: Upload artifact
       uses: actions/upload-pages-artifact@v3

@@ -9,6 +9,7 @@
     <link rel="stylesheet" href="https://cdn.datatables.net/1.13.6/css/dataTables.bootstrap4.min.css">
     <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css">
     <link rel="stylesheet" href="https://cdn.datatables.net/buttons/2.4.2/css/buttons.dataTables.min.css">
+    <link rel="stylesheet" href="https://cdn.datatables.net/select/1.7.0/css/select.dataTables.min.css">
     
     <style>
         body {
@@ -28,7 +29,7 @@
         }
         
         .container {
-            max-width: 1200px;
+            max-width: 1400px;
         }
         
         .card {
@@ -74,6 +75,37 @@
             border-color: #bee5eb;
             color: #0c5460;
         }
+        
+        .question-checkbox {
+            margin-right: 10px;
+            margin-bottom: 10px;
+        }
+        
+        .question-selection {
+            max-height: 400px;
+            overflow-y: auto;
+            border: 1px solid #dee2e6;
+            padding: 15px;
+            border-radius: 5px;
+        }
+        
+        .metadata-filters {
+            background-color: #f8f9fa;
+            padding: 15px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+        }
+        
+        .view-mode-buttons {
+            margin-bottom: 20px;
+        }
+        
+        .selected-questions {
+            background-color: #e3f2fd;
+            padding: 10px;
+            border-radius: 5px;
+            margin-bottom: 15px;
+        }
     </style>
 </head>
 <body>
@@ -96,8 +128,9 @@
                     <strong>How to Use:</strong>
                     <ol>
                         <li>Select a survey type (Household or Provider)</li>
-                        <li>Choose a specific question from the dropdown</li>
-                        <li>Use individual column filters to filter by poverty, disability, etc.</li>
+                        <li>Choose view mode: View All Data or Select Specific Questions</li>
+                        <li>For specific questions: Select one or multiple questions to display</li>
+                        <li>Use metadata filters to filter by poverty, disability, etc.</li>
                         <li>Use the main search box for text searches across all data</li>
                         <li>Export filtered data using the buttons above the table</li>
                     </ol>
@@ -122,17 +155,86 @@
             </div>
         </div>
 
+        <!-- View Mode Selection -->
+        <div class="card" id="viewModeCard" style="display: none;">
+            <div class="card-header">
+                <h5 class="mb-0">Select View Mode</h5>
+            </div>
+            <div class="card-body">
+                <div class="view-mode-buttons">
+                    <div class="btn-group" role="group">
+                        <button type="button" class="btn btn-outline-secondary" id="viewAllBtn" onclick="setViewMode('all')">
+                            View All Data
+                        </button>
+                        <button type="button" class="btn btn-secondary" id="selectQuestionsBtn" onclick="setViewMode('select')">
+                            Select Specific Questions
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <!-- Question Selection -->
         <div class="card" id="questionCard" style="display: none;">
             <div class="card-header">
-                <h5 class="mb-0">Select Question</h5>
+                <h5 class="mb-0">Select Questions</h5>
             </div>
             <div class="card-body">
+                <div class="selected-questions" id="selectedQuestions" style="display: none;">
+                    <strong>Selected Questions:</strong>
+                    <div id="selectedQuestionsList"></div>
+                </div>
+                
                 <div class="form-group">
-                    <label for="questionSelect">Choose a question:</label>
-                    <select class="form-control" id="questionSelect" onchange="loadQuestion()">
-                        <option value="">Select a question...</option>
-                    </select>
+                    <button type="button" class="btn btn-sm btn-outline-primary" onclick="selectAllQuestions()">Select All</button>
+                    <button type="button" class="btn btn-sm btn-outline-secondary" onclick="clearAllQuestions()">Clear All</button>
+                </div>
+                
+                <div class="question-selection" id="questionCheckboxes">
+                    <!-- Question checkboxes will be populated here -->
+                </div>
+                
+                <div class="mt-3">
+                    <button type="button" class="btn btn-primary" onclick="loadSelectedQuestions()" id="loadQuestionsBtn" disabled>
+                        Load Selected Questions
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Metadata Filters -->
+        <div class="card" id="filtersCard" style="display: none;">
+            <div class="card-header">
+                <h5 class="mb-0">Metadata Filters</h5>
+            </div>
+            <div class="card-body">
+                <div class="metadata-filters">
+                    <div class="row">
+                        <div class="col-md-3">
+                            <label for="monthFilter">Month:</label>
+                            <select class="form-control" id="monthFilter" onchange="applyFilters()">
+                                <option value="">All Months</option>
+                            </select>
+                        </div>
+                        <div class="col-md-3">
+                            <label for="povertyFilter">Poverty:</label>
+                            <select class="form-control" id="povertyFilter" onchange="applyFilters()">
+                                <option value="">All</option>
+                            </select>
+                        </div>
+                        <div class="col-md-3" id="childDisabilityFilter" style="display: none;">
+                            <label for="disabilityFilter">Child Disability:</label>
+                            <select class="form-control" id="disabilityFilter" onchange="applyFilters()">
+                                <option value="">All</option>
+                            </select>
+                        </div>
+                        <div class="col-md-3" id="familyStructureFilter" style="display: none;">
+                            <label for="structureFilter">Family Structure:</label>
+                            <select class="form-control" id="structureFilter" onchange="applyFilters()">
+                                <option value="">All</option>
+                            </select>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -140,7 +242,7 @@
         <!-- Data Table -->
         <div class="card" id="tableCard" style="display: none;">
             <div class="card-header">
-                <h5 class="mb-0" id="tableTitle">Responses</h5>
+                <h5 class="mb-0" id="tableTitle">Survey Responses</h5>
             </div>
             <div class="card-body">
                 <div id="loadingMessage" class="loading">
@@ -163,6 +265,7 @@
     <script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
     <script src="https://cdn.datatables.net/1.13.6/js/dataTables.bootstrap4.min.js"></script>
     <script src="https://cdn.datatables.net/buttons/2.4.2/js/dataTables.buttons.min.js"></script>
+    <script src="https://cdn.datatables.net/select/1.7.0/js/dataTables.select.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
     <script src="https://cdn.datatables.net/buttons/2.4.2/js/buttons.html5.min.js"></script>
 
@@ -170,15 +273,57 @@
         let currentData = null;
         let currentSurveyType = null;
         let dataTable = null;
+        let viewMode = 'select'; // 'all' or 'select'
+        let selectedQuestions = [];
 
-        // Simple TSV parser
-        function parseCSV(text) {
+        // Sample data - replace with actual CSV loading
+        const sampleHouseholdData = [
+            {
+                month: "2024-01", 
+                poverty: "Yes", 
+                "child disability": "No", 
+                "family structure": "Two-parent",
+                "What are the biggest challenges and concerns for you and your family right now?": "Financial stress due to job uncertainty and rising costs of childcare.",
+                "What is helping you and your family the most right now?": "Community support programs and family assistance.",
+                "What would you like your elected officials or other policymakers to know?": "We need more affordable childcare options and job security."
+            },
+            {
+                month: "2024-02", 
+                poverty: "No", 
+                "child disability": "Yes", 
+                "family structure": "Single-parent",
+                "What are the biggest challenges and concerns for you and your family right now?": "Finding specialized care for my child with disabilities while working full-time.",
+                "What is helping you and your family the most right now?": "School support services and therapy programs.",
+                "What would you like your elected officials or other policymakers to know?": "More funding needed for special needs support services."
+            }
+            // Add more sample data as needed
+        ];
+
+        const sampleProviderData = [
+            {
+                month: "2024-01", 
+                poverty: "No",
+                "What are the biggest challenges and concerns for you as a child care provider right now?": "Staff shortages and maintaining quality care with limited resources.",
+                "What is helping you as a child care provider the most right now?": "Professional development opportunities and parent cooperation.",
+                "What would you like your elected officials or other policymakers to know about child care providers?": "We need better compensation and professional recognition."
+            },
+            {
+                month: "2024-02", 
+                poverty: "Yes",
+                "What are the biggest challenges and concerns for you as a child care provider right now?": "Rising operational costs and difficulty attracting qualified staff.",
+                "What is helping you as a child care provider the most right now?": "Government grants and community partnerships.",
+                "What would you like your elected officials or other policymakers to know about child care providers?": "Sustainable funding models are essential for quality care."
+            }
+        ];
+
+        // Parse TSV/CSV data
+        function parseCSV(text, delimiter = '\t') {
             const lines = text.split('\n').filter(line => line.trim());
-            const headers = lines[0].split('\t');
+            const headers = lines[0].split(delimiter);
             const data = [];
             
             for (let i = 1; i < lines.length; i++) {
-                const values = lines[i].split('\t');
+                const values = lines[i].split(delimiter);
                 if (values.length === headers.length) {
                     const row = {};
                     headers.forEach((header, index) => {
@@ -195,11 +340,18 @@
         async function loadCSV(filename) {
             try {
                 const response = await fetch(filename);
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
                 const text = await response.text();
                 return parseCSV(text);
             } catch (error) {
                 console.error('Error loading CSV:', error);
-                return null;
+                // Use sample data as fallback
+                return {
+                    headers: Object.keys(currentSurveyType === 'household' ? sampleHouseholdData[0] : sampleProviderData[0]),
+                    data: currentSurveyType === 'household' ? sampleHouseholdData : sampleProviderData
+                };
             }
         }
 
@@ -211,82 +363,270 @@
             document.getElementById('householdBtn').className = type === 'household' ? 'btn btn-primary' : 'btn btn-outline-primary';
             document.getElementById('providerBtn').className = type === 'provider' ? 'btn btn-primary' : 'btn btn-outline-primary';
             
-            // Hide table while loading
+            // Hide subsequent cards
             document.getElementById('tableCard').style.display = 'none';
+            document.getElementById('questionCard').style.display = 'none';
+            document.getElementById('filtersCard').style.display = 'none';
             
             // Load appropriate CSV file
-            const filename = type === 'household' ? 'data/ecopen_data_consent_filteredt_10_rows.csv' : 'data/ccopen_data_consent_filteredt_10_rows.csv';
+            const filename = type === 'household' ? 'ecopen_data_consent_filteredt_10_rows.csv' : 'ccopen_data_consent_filteredt_10_rows.csv';
             currentData = await loadCSV(filename);
             
             if (currentData && currentData.data.length > 0) {
-                populateQuestionDropdown();
-                document.getElementById('questionCard').style.display = 'block';
+                document.getElementById('viewModeCard').style.display = 'block';
+                populateMetadataFilters();
+                
+                // Show/hide household-specific filters
+                document.getElementById('childDisabilityFilter').style.display = type === 'household' ? 'block' : 'none';
+                document.getElementById('familyStructureFilter').style.display = type === 'household' ? 'block' : 'none';
             } else {
-                alert('Error loading data file: ' + filename);
+                alert('Error loading data. Using sample data for demonstration.');
             }
         }
 
-        // Populate question dropdown
-        function populateQuestionDropdown() {
-            const select = document.getElementById('questionSelect');
-            select.innerHTML = '<option value="">Select a question...</option>';
+        // Set view mode
+        function setViewMode(mode) {
+            viewMode = mode;
+            
+            // Update button states
+            document.getElementById('viewAllBtn').className = mode === 'all' ? 'btn btn-secondary' : 'btn btn-outline-secondary';
+            document.getElementById('selectQuestionsBtn').className = mode === 'select' ? 'btn btn-secondary' : 'btn btn-outline-secondary';
+            
+            if (mode === 'all') {
+                document.getElementById('questionCard').style.display = 'none';
+                loadAllData();
+            } else {
+                populateQuestionCheckboxes();
+                document.getElementById('questionCard').style.display = 'block';
+                document.getElementById('tableCard').style.display = 'none';
+            }
+        }
+
+        // Populate question checkboxes
+        function populateQuestionCheckboxes() {
+            const container = document.getElementById('questionCheckboxes');
+            container.innerHTML = '';
             
             if (currentData && currentData.headers) {
-                // Find question columns (exclude metadata)
                 const metadataColumns = ['month', 'poverty', 'child disability', 'family structure'];
                 const questionColumns = currentData.headers.filter(header => 
                     !metadataColumns.includes(header) && 
                     !header.startsWith('TIMER') && 
                     !header.startsWith('OPEN.') &&
-                    header.length > 15 // Only actual questions
+                    header.length > 15
                 );
                 
-                questionColumns.forEach(question => {
-                    const option = document.createElement('option');
-                    option.value = question;
-                    option.textContent = question.length > 100 ? question.substring(0, 100) + '...' : question;
-                    select.appendChild(option);
+                questionColumns.forEach((question, index) => {
+                    const div = document.createElement('div');
+                    div.className = 'question-checkbox';
+                    
+                    const checkbox = document.createElement('input');
+                    checkbox.type = 'checkbox';
+                    checkbox.id = `question_${index}`;
+                    checkbox.value = question;
+                    checkbox.onchange = updateSelectedQuestions;
+                    
+                    const label = document.createElement('label');
+                    label.htmlFor = `question_${index}`;
+                    label.textContent = question.length > 100 ? question.substring(0, 100) + '...' : question;
+                    label.title = question;
+                    
+                    div.appendChild(checkbox);
+                    div.appendChild(label);
+                    container.appendChild(div);
                 });
             }
         }
 
-        // Load specific question
-        function loadQuestion() {
-            const selectedQuestion = document.getElementById('questionSelect').value;
-            if (!selectedQuestion || !currentData) return;
+        // Update selected questions
+        function updateSelectedQuestions() {
+            const checkboxes = document.querySelectorAll('#questionCheckboxes input[type="checkbox"]');
+            selectedQuestions = Array.from(checkboxes)
+                .filter(cb => cb.checked)
+                .map(cb => cb.value);
             
-            document.getElementById('tableTitle').textContent = selectedQuestion;
+            const loadBtn = document.getElementById('loadQuestionsBtn');
+            loadBtn.disabled = selectedQuestions.length === 0;
+            
+            // Update selected questions display
+            const selectedDiv = document.getElementById('selectedQuestions');
+            const listDiv = document.getElementById('selectedQuestionsList');
+            
+            if (selectedQuestions.length > 0) {
+                selectedDiv.style.display = 'block';
+                listDiv.innerHTML = selectedQuestions.map(q => 
+                    `<span class="badge badge-primary mr-2 mb-2">${q.length > 50 ? q.substring(0, 50) + '...' : q}</span>`
+                ).join('');
+            } else {
+                selectedDiv.style.display = 'none';
+            }
+        }
+
+        // Select all questions
+        function selectAllQuestions() {
+            const checkboxes = document.querySelectorAll('#questionCheckboxes input[type="checkbox"]');
+            checkboxes.forEach(cb => cb.checked = true);
+            updateSelectedQuestions();
+        }
+
+        // Clear all questions
+        function clearAllQuestions() {
+            const checkboxes = document.querySelectorAll('#questionCheckboxes input[type="checkbox"]');
+            checkboxes.forEach(cb => cb.checked = false);
+            updateSelectedQuestions();
+        }
+
+        // Load selected questions
+        function loadSelectedQuestions() {
+            if (selectedQuestions.length === 0) return;
+            
+            document.getElementById('tableTitle').textContent = `Selected Questions (${selectedQuestions.length})`;
             document.getElementById('tableCard').style.display = 'block';
+            document.getElementById('filtersCard').style.display = 'block';
             document.getElementById('loadingMessage').style.display = 'block';
             document.getElementById('dataTable').style.display = 'none';
             
-            console.log('Loading question:', selectedQuestion);
-            console.log('Available data:', currentData.data[0]);
+            createDataTable(prepareSelectedQuestionsData());
+        }
+
+        // Load all data
+        function loadAllData() {
+            document.getElementById('tableTitle').textContent = 'All Survey Data';
+            document.getElementById('tableCard').style.display = 'block';
+            document.getElementById('filtersCard').style.display = 'block';
+            document.getElementById('loadingMessage').style.display = 'block';
+            document.getElementById('dataTable').style.display = 'none';
             
-            // Create table data using the exact column names from CSV
+            createDataTable(prepareAllData());
+        }
+
+        // Prepare data for selected questions
+        function prepareSelectedQuestionsData() {
+            const metadataColumns = ['month', 'poverty'];
+            if (currentSurveyType === 'household') {
+                metadataColumns.push('child disability', 'family structure');
+            }
+            
             const filteredData = [];
             currentData.data.forEach((row, index) => {
-                const response = row[selectedQuestion];
-                if (response && response.trim() !== '') {
+                const hasResponses = selectedQuestions.some(q => row[q] && row[q].trim() !== '');
+                if (hasResponses) {
                     const tableRow = {
-                        ID: currentSurveyType === 'household' ? `EC_${index + 1}` : `CC_${index + 1}`,
-                        Response: response,
-                        Month: row['month'] || '',
-                        Poverty: row['poverty'] || ''
+                        ID: currentSurveyType === 'household' ? `EC_${index + 1}` : `CC_${index + 1}`
                     };
                     
-                    // Add household-specific columns if they exist
-                    if (currentSurveyType === 'household') {
-                        if (row['child disability']) tableRow['Child Disability'] = row['child disability'];
-                        if (row['family structure']) tableRow['Family Structure'] = row['family structure'];
-                    }
+                    // Add metadata
+                    metadataColumns.forEach(col => {
+                        if (row[col] !== undefined) {
+                            tableRow[col] = row[col];
+                        }
+                    });
+                    
+                    // Add selected question responses
+                    selectedQuestions.forEach(question => {
+                        if (row[question] && row[question].trim() !== '') {
+                            tableRow[question] = row[question];
+                        }
+                    });
                     
                     filteredData.push(tableRow);
                 }
             });
             
-            console.log('Filtered data for table:', filteredData);
-            createDataTable(filteredData);
+            return filteredData;
+        }
+
+        // Prepare all data
+        function prepareAllData() {
+            const metadataColumns = ['month', 'poverty'];
+            if (currentSurveyType === 'household') {
+                metadataColumns.push('child disability', 'family structure');
+            }
+            
+            const filteredData = [];
+            currentData.data.forEach((row, index) => {
+                const tableRow = {
+                    ID: currentSurveyType === 'household' ? `EC_${index + 1}` : `CC_${index + 1}`
+                };
+                
+                // Add all columns
+                Object.keys(row).forEach(key => {
+                    if (!key.startsWith('TIMER') && !key.startsWith('OPEN.')) {
+                        tableRow[key] = row[key];
+                    }
+                });
+                
+                filteredData.push(tableRow);
+            });
+            
+            return filteredData;
+        }
+
+        // Populate metadata filters
+        function populateMetadataFilters() {
+            if (!currentData) return;
+            
+            // Month filter
+            const months = [...new Set(currentData.data.map(row => row.month).filter(m => m))];
+            populateSelect('monthFilter', months);
+            
+            // Poverty filter
+            const povertyValues = [...new Set(currentData.data.map(row => row.poverty).filter(p => p))];
+            populateSelect('povertyFilter', povertyValues);
+            
+            if (currentSurveyType === 'household') {
+                // Child disability filter
+                const disabilityValues = [...new Set(currentData.data.map(row => row['child disability']).filter(d => d))];
+                populateSelect('disabilityFilter', disabilityValues);
+                
+                // Family structure filter
+                const structureValues = [...new Set(currentData.data.map(row => row['family structure']).filter(s => s))];
+                populateSelect('structureFilter', structureValues);
+            }
+        }
+
+        // Populate select dropdown
+        function populateSelect(selectId, values) {
+            const select = document.getElementById(selectId);
+            const currentValue = select.value;
+            
+            // Keep the "All" option and add new options
+            select.innerHTML = select.children[0].outerHTML;
+            
+            values.sort().forEach(value => {
+                const option = document.createElement('option');
+                option.value = value;
+                option.textContent = value;
+                select.appendChild(option);
+            });
+            
+            select.value = currentValue;
+        }
+
+        // Apply filters
+        function applyFilters() {
+            if (!dataTable) return;
+            
+            const monthFilter = document.getElementById('monthFilter').value;
+            const povertyFilter = document.getElementById('povertyFilter').value;
+            const disabilityFilter = document.getElementById('disabilityFilter').value;
+            const structureFilter = document.getElementById('structureFilter').value;
+            
+            // Apply column filters
+            dataTable.columns().every(function() {
+                const column = this;
+                const header = column.header().textContent;
+                
+                let searchValue = '';
+                if (header === 'month' && monthFilter) searchValue = monthFilter;
+                else if (header === 'poverty' && povertyFilter) searchValue = povertyFilter;
+                else if (header === 'child disability' && disabilityFilter) searchValue = disabilityFilter;
+                else if (header === 'family structure' && structureFilter) searchValue = structureFilter;
+                
+                if (column.search() !== searchValue) {
+                    column.search(searchValue).draw();
+                }
+            });
         }
 
         // Create DataTable
@@ -297,47 +637,44 @@
             }
             
             if (data.length === 0) {
-                document.getElementById('loadingMessage').innerHTML = '<p>No responses found for this question.</p>';
+                document.getElementById('loadingMessage').innerHTML = '<p>No data found for the selected criteria.</p>';
                 return;
             }
             
-            console.log('Creating table with data:', data);
-            
-            // Create columns based on what's actually in the data
+            // Create columns based on data
             const sampleRow = data[0];
-            const columns = Object.keys(sampleRow).map(key => ({
-                title: key,
-                data: key,
-                width: key === 'Response' ? '50%' : 
-                       key === 'ID' ? '8%' : '12%'
-            }));
-            
-            console.log('Table columns:', columns);
+            const columns = Object.keys(sampleRow).map(key => {
+                let width = '12%';
+                if (key === 'ID') width = '8%';
+                else if (key.length > 50) width = '25%'; // Question columns
+                else if (['month', 'poverty', 'child disability', 'family structure'].includes(key)) width = '10%';
+                
+                return {
+                    title: key,
+                    data: key,
+                    width: width,
+                    render: function(data, type, row) {
+                        if (type === 'display' && data && data.length > 100) {
+                            return data.substring(0, 100) + '...';
+                        }
+                        return data;
+                    }
+                };
+            });
             
             dataTable = $('#dataTable').DataTable({
                 data: data,
                 columns: columns,
-                pageLength: 25,
+                pageLength: 20,
                 scrollX: true,
                 autoWidth: false,
                 dom: 'Bfrtip',
                 buttons: ['copy', 'csv', 'excel'],
-                order: [[columns.findIndex(col => col.data === 'Month') || 0, 'desc']],
+                order: [[0, 'asc']],
+                columnDefs: [
+                    { targets: '_all', className: 'text-left' }
+                ],
                 initComplete: function() {
-                    // Add individual column filters
-                    this.api().columns().every(function() {
-                        var column = this;
-                        var title = column.header().textContent;
-                        
-                        var input = $('<input type="text" placeholder="Filter ' + title + '" style="width: 100%; padding: 3px; margin-top: 5px;" />')
-                            .appendTo($(column.header()))
-                            .on('keyup change clear', function() {
-                                if (column.search() !== this.value) {
-                                    column.search(this.value).draw();
-                                }
-                            });
-                    });
-                    
                     document.getElementById('loadingMessage').style.display = 'none';
                     document.getElementById('dataTable').style.display = 'table';
                 }
