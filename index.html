@@ -258,8 +258,8 @@
                 
                 currentData = await loadCSV(filename);
                 
-                if (currentData && currentData.data && currentData.data.length > 0) {
-                    console.log('Data loaded successfully');
+                if (currentData && currentData.data && currentData.headers) {
+                    console.log('Data loaded successfully, rows:', currentData.data.length);
                     populateQuestionDropdown();
                     document.getElementById('viewCard').style.display = 'block';
                     updateView(); // Load default view
@@ -295,14 +295,19 @@
             select.innerHTML = '<option value="">Select a question...</option>';
             
             if (currentData && currentData.headers) {
+                console.log('All headers:', currentData.headers);
                 // Filter out metadata columns to show only questions
                 const metadataColumns = ['month', 'poverty', 'child disability', 'family structure'];
                 const questionColumns = currentData.headers.filter(header => {
                     // Exclude metadata columns and timer columns
-                    return !metadataColumns.includes(header) && 
-                           !header.startsWith('TIMER') && 
-                           !header.startsWith('OPEN.') &&
-                           header.length > 10; // Questions are typically longer
+                    const isMetadata = metadataColumns.includes(header);
+                    const isTimer = header.startsWith('TIMER');
+                    const isOpen = header.startsWith('OPEN.');
+                    const isLongEnough = header.length > 10;
+                    
+                    console.log(`Header: "${header}" - Metadata: ${isMetadata}, Timer: ${isTimer}, Open: ${isOpen}, Long enough: ${isLongEnough}`);
+                    
+                    return !isMetadata && !isTimer && !isOpen && isLongEnough;
                 });
                 
                 console.log('Question columns found:', questionColumns);
@@ -313,6 +318,8 @@
                     option.textContent = question.length > 80 ? question.substring(0, 80) + '...' : question;
                     select.appendChild(option);
                 });
+                
+                console.log('Dropdown populated with', questionColumns.length, 'questions');
             }
         }
 
