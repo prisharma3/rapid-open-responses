@@ -200,12 +200,9 @@
             const lines = text.split('\n');
             console.log('Number of lines:', lines.length);
             
-            // Detect delimiter - check if first line has more tabs or commas
-            const firstLine = lines[0];
-            const commaCount = (firstLine.match(/,/g) || []).length;
-            const tabCount = (firstLine.match(/\t/g) || []).length;
-            const delimiter = tabCount > commaCount ? '\t' : ',';
-            console.log('Detected delimiter:', delimiter === '\t' ? 'TAB' : 'COMMA');
+            // Force tab delimiter since we know these are TSV files with commas in the content
+            const delimiter = '\t';
+            console.log('Using delimiter: TAB (forced)');
             
             const headers = lines[0].split(delimiter).map(h => h.trim().replace(/"/g, ''));
             console.log('Headers:', headers);
@@ -222,8 +219,9 @@
                             row[header] = values[index];
                         });
                         data.push(row);
+                        console.log(`Added row ${i-1}:`, row);
                     } else {
-                        console.log(`Skipping line ${i}: value count mismatch`);
+                        console.log(`Skipping line ${i}: value count mismatch - got ${values.length}, expected ${headers.length}`);
                     }
                 }
             }
