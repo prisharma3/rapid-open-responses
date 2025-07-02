@@ -1,4 +1,39 @@
-<!DOCTYPE html>
+// Parse CSV data using Papa Parse - robust and efficient  
+        function parseCSV(text) {
+            console.log('Parsing CSV with Papa Parse...');
+            console.log('Input text length:', text.length);
+            
+            const result = Papa.parse(text, {
+                header: true,
+                skipEmptyLines: true,
+                dynamicTyping: false,
+                transform: function(value) {
+                    if (value === 'NA' || value === 'null' || value === '') {
+                        return '';
+                    }
+                    return value;
+                }
+            });
+            
+            if (result.errors && result.errors.length > 0) {
+                console.warn('Papa Parse errors (may be harmless):', result.errors);
+                // Don't throw on parse errors - they're often just warnings
+            }
+            
+            console.log('Papa Parse meta:', result.meta);
+            console.log('Total rows parsed:', result.data.length);
+            console.log('Fields detected:', result.meta.fields);
+            
+            // Log first few rows to understand the data
+            console.log('First 3 rows:');
+            result.data.slice(0, 3).forEach((row, i) => {
+                console.log(`Row ${i}:`, Object.keys(row).slice(0, 5), '=>', Object.values(row).slice(0, 5));
+            });
+            
+            // Filter out rows that are completely empty or just have empty strings
+            const validData = result.data.filter(row => {
+                const values = Object.values(row);
+                const has<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -347,11 +382,10 @@
             
             try {
                 const response = await fetch(filename);
-                console.log(`Response status: ${response.status}`);
-                console.log(`Response URL: ${response.url}`);
+                console.log(`Response status: ${response.status} for ${filename}`);
                 
                 if (!response.ok) {
-                    throw new Error(`HTTP ${response.status}: Could not load ${filename}`);
+                    throw new Error(`HTTP ${response.status}: Could not load ${filename}. Check if file exists in data/ folder.`);
                 }
                 
                 const text = await response.text();
@@ -366,9 +400,34 @@
                 
                 return parsed;
             } catch (error) {
-                console.error(`FATAL ERROR loading ${filename}:`, error);
-                alert(`Failed to load data file: ${filename}\nError: ${error.message}\n\nPlease check:\n1. File exists in data/ folder\n2. File is not corrupted\n3. Network connection`);
-                throw error; // Re-throw to prevent further execution
+                console.error(`CRITICAL ERROR loading ${filename}:`, error);
+                
+                // Try alternative paths for 404 errors
+                if (error.message.includes('404') || error.message.includes('HTTP 404')) {
+                    console.log('Trying alternative file paths...');
+                    const alternatives = [
+                        filename.replace('data/', ''), // Remove data/ prefix
+                        `./${filename}`, // Add ./
+                        `/${filename}` // Add /
+                    ];
+                    
+                    for (const altPath of alternatives) {
+                        try {
+                            console.log(`Trying: ${altPath}`);
+                            const altResponse = await fetch(altPath);
+                            if (altResponse.ok) {
+                                const altText = await altResponse.text();
+                                console.log(`SUCCESS with alternative path: ${altPath}`);
+                                return parseCSV(altText);
+                            }
+                        } catch (altError) {
+                            console.log(`Failed: ${altPath}`);
+                        }
+                    }
+                }
+                
+                alert(`Failed to load data file: ${filename}\nError: ${error.message}\n\nPlease check:\n1. File exists in data/ folder\n2. File is properly deployed\n3. No typos in filename`);
+                throw error;
             }
         }
 
@@ -398,9 +457,19 @@
                     document.getElementById('viewModeCard').style.display = 'block';
                     populateMetadataFilters();
                     
-                    // Show/hide household-specific filters
-                    document.getElementById('childDisabilityFilter').style.display = type === 'household' ? 'block' : 'none';
-                    document.getElementById('familyStructureFilter').style.display = type === 'household' ? 'block' : 'none';
+                    // Show/hide metadata filters based on survey type
+                    const childDisabilityFilter = document.getElementById('childDisabilityFilter');
+                    const familyStructureFilter = document.getElementById('familyStructureFilter');
+                    
+                    if (type === 'household') {
+                        // Household surveys have all 4 metadata fields
+                        if (childDisabilityFilter) childDisabilityFilter.style.display = 'block';
+                        if (familyStructureFilter) familyStructureFilter.style.display = 'block';
+                    } else {
+                        // Provider surveys only have month and poverty
+                        if (childDisabilityFilter) childDisabilityFilter.style.display = 'none';
+                        if (familyStructureFilter) familyStructureFilter.style.display = 'none';
+                    }
                     
                     console.log(`${type} survey loaded: ${currentData.data.length} responses`);
                 } else {
@@ -525,42 +594,40 @@
         function loadSelectedQuestions() {
             if (selectedQuestions.length === 0) return;
             
-            const tableCard = document.getElementById('tableCard');
-            const filtersCard = document.getElementById('filtersCard');
-            const loadingMessage = document.getElementById('loadingMessage');
-            const dataTableElement = document.getElementById('dataTable');
+            // Check if all required elements exist
+            const requiredElements = ['tableCard', 'filtersCard', 'loadingMessage', 'dataTable'];
+            const missingElements = requiredElements.filter(id => !document.getElementById(id));
             
-            if (!tableCard || !filtersCard || !loadingMessage || !dataTableElement) {
-                console.error('Required elements not found');
+            if (missingElements.length > 0) {
+                console.error('Missing required elements:', missingElements);
                 return;
             }
             
             document.getElementById('tableTitle').textContent = `Selected Questions (${selectedQuestions.length})`;
-            tableCard.style.display = 'block';
-            filtersCard.style.display = 'block';
-            loadingMessage.style.display = 'block';
-            dataTableElement.style.display = 'none';
+            document.getElementById('tableCard').style.display = 'block';
+            document.getElementById('filtersCard').style.display = 'block';
+            document.getElementById('loadingMessage').style.display = 'block';
+            document.getElementById('dataTable').style.display = 'none';
             
             createDataTable(prepareSelectedQuestionsData());
         }
 
         // Load all data
         function loadAllData() {
-            const tableCard = document.getElementById('tableCard');
-            const filtersCard = document.getElementById('filtersCard');
-            const loadingMessage = document.getElementById('loadingMessage');
-            const dataTableElement = document.getElementById('dataTable');
+            // Check if all required elements exist
+            const requiredElements = ['tableCard', 'filtersCard', 'loadingMessage', 'dataTable'];
+            const missingElements = requiredElements.filter(id => !document.getElementById(id));
             
-            if (!tableCard || !filtersCard || !loadingMessage || !dataTableElement) {
-                console.error('Required elements not found');
+            if (missingElements.length > 0) {
+                console.error('Missing required elements:', missingElements);
                 return;
             }
             
             document.getElementById('tableTitle').textContent = 'All Survey Data';
-            tableCard.style.display = 'block';
-            filtersCard.style.display = 'block';
-            loadingMessage.style.display = 'block';
-            dataTableElement.style.display = 'none';
+            document.getElementById('tableCard').style.display = 'block';
+            document.getElementById('filtersCard').style.display = 'block';
+            document.getElementById('loadingMessage').style.display = 'block';
+            document.getElementById('dataTable').style.display = 'none';
             
             createDataTable(prepareAllData());
         }
@@ -574,7 +641,12 @@
             
             const filteredData = [];
             currentData.data.forEach((row, index) => {
-                const hasResponses = selectedQuestions.some(q => row[q] && row[q].trim() !== '');
+                // Include row if ANY selected question has a response
+                const hasResponses = selectedQuestions.some(q => {
+                    const value = row[q];
+                    return value && value.toString().trim() !== '';
+                });
+                
                 if (hasResponses) {
                     const tableRow = {
                         ID: `${currentSurveyType === 'household' ? 'EC' : 'CC'}_${index + 1}`
@@ -595,7 +667,9 @@
             });
             
             console.log('Prepared selected questions data:', filteredData.length, 'rows');
-            console.log('Sample prepared row:', filteredData[0]);
+            if (filteredData.length > 0) {
+                console.log('Sample prepared row:', filteredData[0]);
+            }
             return filteredData;
         }
 
@@ -629,29 +703,26 @@
                 return;
             }
             
-            console.log('Populating metadata filters with', currentData.data.length, 'rows');
-            console.log('Sample data row:', currentData.data[0]);
+            console.log(`Populating metadata filters for ${currentSurveyType} survey with ${currentData.data.length} rows`);
             
-            // Month filter
+            // All surveys have month and poverty
             const months = [...new Set(currentData.data.map(row => row.month).filter(m => m && m.trim() !== ''))];
-            console.log('Month values found:', months);
             populateSelect('monthFilter', months.sort());
             
-            // Poverty filter  
             const povertyValues = [...new Set(currentData.data.map(row => row.poverty).filter(p => p && p.trim() !== ''))];
-            console.log('Poverty values found:', povertyValues);
             populateSelect('povertyFilter', povertyValues.sort());
             
+            // Only household surveys have child disability and family structure
             if (currentSurveyType === 'household') {
-                // Child disability filter
                 const disabilityValues = [...new Set(currentData.data.map(row => row['child disability']).filter(d => d && d.trim() !== ''))];
-                console.log('Disability values found:', disabilityValues);
                 populateSelect('disabilityFilter', disabilityValues.sort());
                 
-                // Family structure filter
                 const structureValues = [...new Set(currentData.data.map(row => row['family structure']).filter(s => s && s.trim() !== ''))];
-                console.log('Structure values found:', structureValues);
                 populateSelect('structureFilter', structureValues.sort());
+                
+                console.log('Household filters populated:', {months, povertyValues, disabilityValues, structureValues});
+            } else {
+                console.log('Provider filters populated:', {months, povertyValues});
             }
         }
 
@@ -716,7 +787,8 @@
                 return;
             }
             
-            console.log('Creating table with data:', data.length, 'rows');
+            console.log('Creating table with', data.length, 'rows');
+            console.log('Sample data being displayed:', data[0]);
             
             // Create columns based on actual data keys
             const sampleRow = data[0];
@@ -727,20 +799,18 @@
                 else if (['month', 'poverty', 'child disability', 'family structure'].includes(key)) width = '10%';
                 
                 return {
-                    title: key, // This will show column names
+                    title: key, // Column header will show the full question text
                     data: key,
                     width: width,
-                    defaultContent: '', // Handle missing data
+                    defaultContent: '',
                     render: function(data, type, row) {
                         if (type === 'display' && data && typeof data === 'string' && data.length > 150) {
-                            return data.substring(0, 150) + '...'; // Increased from 100 to 150
+                            return data.substring(0, 150) + '...';
                         }
-                        return data || ''; // Handle null/undefined
+                        return data || '';
                     }
                 };
             });
-            
-            console.log('Table columns:', columns.map(c => c.title));
             
             dataTable = $('#dataTable').DataTable({
                 data: data,
@@ -755,7 +825,7 @@
                     { targets: '_all', className: 'text-left' }
                 ],
                 initComplete: function() {
-                    console.log('Table initialization complete');
+                    console.log('Table created successfully');
                     const loadingMessage = document.getElementById('loadingMessage');
                     const dataTableElement = document.getElementById('dataTable');
                     
