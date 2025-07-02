@@ -206,49 +206,6 @@
             }
         }
 
-        // Simple CSV parser
-        function parseCSV(text) {
-            const lines = text.split('\n');
-            const headers = lines[0].split(',').map(h => h.trim().replace(/"/g, ''));
-            const data = [];
-            
-            for (let i = 1; i < lines.length; i++) {
-                if (lines[i].trim()) {
-                    const values = parseCSVRow(lines[i]);
-                    if (values.length === headers.length) {
-                        const row = {};
-                        headers.forEach((header, index) => {
-                            row[header] = values[index];
-                        });
-                        data.push(row);
-                    }
-                }
-            }
-            return { headers, data };
-        }
-
-        // Parse CSV row handling quotes and commas
-        function parseCSVRow(row) {
-            const result = [];
-            let current = '';
-            let inQuotes = false;
-            
-            for (let i = 0; i < row.length; i++) {
-                const char = row[i];
-                
-                if (char === '"') {
-                    inQuotes = !inQuotes;
-                } else if (char === ',' && !inQuotes) {
-                    result.push(current.trim());
-                    current = '';
-                } else {
-                    current += char;
-                }
-            }
-            result.push(current.trim());
-            return result;
-        }
-
         // Load survey type (household or provider)
         async function loadSurveyType(type) {
             currentSurveyType = type;
@@ -297,9 +254,15 @@
             if (currentData && currentData.headers) {
                 // Filter out metadata columns to show only questions
                 const metadataColumns = ['month', 'poverty', 'child disability', 'family structure'];
-                const questionColumns = currentData.headers.filter(header => 
-                    !metadataColumns.includes(header) && header.includes('?')
-                );
+                const questionColumns = currentData.headers.filter(header => {
+                    // Exclude metadata columns and timer columns
+                    return !metadataColumns.includes(header) && 
+                           !header.startsWith('TIMER') && 
+                           !header.startsWith('OPEN.') &&
+                           header.length > 10; // Questions are typically longer
+                });
+                
+                console.log('Question columns found:', questionColumns);
                 
                 questionColumns.forEach(question => {
                     const option = document.createElement('option');
@@ -333,9 +296,12 @@
                     if (row['family structure']) result['Family Structure'] = row['family structure'];
                 }
                 
-                // Add all question columns
+                // Add all question columns (exclude metadata and timer columns)
                 currentData.headers.forEach(header => {
-                    if (!['month', 'poverty', 'child disability', 'family structure'].includes(header)) {
+                    if (!['month', 'poverty', 'child disability', 'family structure'].includes(header) && 
+                        !header.startsWith('TIMER') && 
+                        !header.startsWith('OPEN.') &&
+                        header.length > 10) {
                         result[header] = row[header] || '';
                     }
                 });
