@@ -50,7 +50,7 @@ jobs:
           echo "Error: EC data file not found"
           exit 1
         fi
-        if [ ! -f "data/cc-open_data_consent_filteredt_100_rows.csv" ]; then
+        if [ ! -f "data/cc_open_data_consent_filteredt_100_rows.csv" ]; then
           echo "Error: CC data file not found"
           exit 1
         fi
