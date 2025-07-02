@@ -446,7 +446,7 @@
             
             try {
                 // Load appropriate CSV file
-                const filename = type === 'household' ? 'data/ec-open_data_consent_filteredt_100_rows.csv' : 'data/cc-open_data_consent_filteredt_100_rows.csv';
+                const filename = type === 'household' ? 'data/ec-open_data_consent_filteredt_100_rows.csv' : 'data/cc_open_data_consent_filteredt_100_rows.csv';
                 console.log(`Loading ${type} survey data from ${filename}`);
                 
                 currentData = await loadCSV(filename);
