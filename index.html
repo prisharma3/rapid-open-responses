@@ -189,22 +189,10 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
     <script src="https://cdn.datatables.net/buttons/2.4.2/js/buttons.html5.min.js"></script>
 
-    <script>
+<script>
         let currentData = null;
         let currentSurveyType = null;
         let dataTable = null;
-
-        // Load CSV data
-        async function loadCSV(filename) {
-            try {
-                const response = await fetch(filename);
-                const text = await response.text();
-                return parseCSV(text);
-            } catch (error) {
-                console.error('Error loading CSV:', error);
-                return null;
-            }
-        }
 
         // Simple CSV parser - handle both comma and tab delimiters
         function parseCSV(text) {
@@ -238,6 +226,18 @@
             console.log('Parsed data:', data.length, 'rows');
             console.log('Sample row:', data[0]);
             return { headers, data };
+        }
+
+        // Load CSV data
+        async function loadCSV(filename) {
+            try {
+                const response = await fetch(filename);
+                const text = await response.text();
+                return parseCSV(text);
+            } catch (error) {
+                console.error('Error loading CSV:', error);
+                return null;
+            }
         }
 
         // Load survey type (household or provider)
