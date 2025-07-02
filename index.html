@@ -360,18 +360,24 @@
                     if (row['family structure']) result['Family Structure'] = row['family structure'];
                 }
                 
-                // Add all question columns (exclude metadata and timer columns)
+                // Add question columns individually with shortened names
+                const metadataColumns = ['month', 'poverty', 'child disability', 'family structure'];
                 currentData.headers.forEach(header => {
-                    if (!['month', 'poverty', 'child disability', 'family structure'].includes(header) && 
+                    if (!metadataColumns.includes(header) && 
                         !header.startsWith('TIMER') && 
                         !header.startsWith('OPEN.') &&
                         header.length > 10) {
-                        result[header] = row[header] || '';
+                        // Shorten very long question headers for display
+                        const shortHeader = header.length > 50 ? header.substring(0, 50) + '...' : header;
+                        result[shortHeader] = row[header] || '';
                     }
                 });
                 
                 return result;
             });
+            
+            console.log('Table data for all questions:', tableData);
+            console.log('Sample row keys:', Object.keys(tableData[0]));
             
             createDataTable(tableData, 'all');
         }
@@ -423,12 +429,17 @@
                 return;
             }
             
+            console.log('Creating DataTable with data:', data);
+            console.log('Data keys:', Object.keys(data[0]));
+            
             // Get column names
             const columns = Object.keys(data[0]).map(key => ({
                 title: key,
                 data: key,
                 className: (key === 'Response' || key.includes('?')) ? 'response-column' : ''
             }));
+            
+            console.log('DataTable columns:', columns);
             
             // Set up column widths based on view type
             let columnDefs = [];
@@ -442,7 +453,7 @@
             } else {
                 // For wide view, make question columns wider
                 columns.forEach((col, index) => {
-                    if (col.data.includes('?')) {
+                    if (col.data.includes('?') || col.data.includes('...')) {
                         columnDefs.push({ width: "200px", targets: index });
                     } else if (col.data === 'ID') {
                         columnDefs.push({ width: "80px", targets: index });
@@ -452,37 +463,42 @@
                 });
             }
             
-            dataTable = $('#dataTable').DataTable({
-                data: data,
-                columns: columns,
-                columnDefs: columnDefs,
-                pageLength: 25,
-                scrollX: true,
-                scrollY: '600px',
-                autoWidth: false,
-                dom: 'Bfrtip',
-                buttons: ['copy', 'csv', 'excel'],
-                order: [[columns.findIndex(col => col.data === 'Month'), 'desc']],
-                initComplete: function() {
-                    // Add individual column filters
-                    this.api().columns().every(function() {
-                        var column = this;
-                        var title = column.header().textContent;
+            try {
+                dataTable = $('#dataTable').DataTable({
+                    data: data,
+                    columns: columns,
+                    columnDefs: columnDefs,
+                    pageLength: 25,
+                    scrollX: true,
+                    scrollY: '600px',
+                    autoWidth: false,
+                    dom: 'Bfrtip',
+                    buttons: ['copy', 'csv', 'excel'],
+                    order: [[columns.findIndex(col => col.data === 'Month'), 'desc']],
+                    initComplete: function() {
+                        // Add individual column filters
+                        this.api().columns().every(function() {
+                            var column = this;
+                            var title = column.header().textContent;
+                            
+                            // Create filter input for each column
+                            var input = $('<input type="text" placeholder="Filter ' + title.substring(0, 20) + '..." style="width: 100%; padding: 3px; margin-top: 5px;" />')
+                                .appendTo($(column.header()))
+                                .on('keyup change clear', function() {
+                                    if (column.search() !== this.value) {
+                                        column.search(this.value).draw();
+                                    }
+                                });
+                        });
                         
-                        // Create filter input for each column
-                        var input = $('<input type="text" placeholder="Filter ' + title + '" style="width: 100%; padding: 3px; margin-top: 5px;" />')
-                            .appendTo($(column.header()))
-                            .on('keyup change clear', function() {
-                                if (column.search() !== this.value) {
-                                    column.search(this.value).draw();
-                                }
-                            });
-                    });
-                    
-                    document.getElementById('loadingMessage').style.display = 'none';
-                    document.getElementById('dataTable').style.display = 'table';
-                }
-            });
+                        document.getElementById('loadingMessage').style.display = 'none';
+                        document.getElementById('dataTable').style.display = 'table';
+                    }
+                });
+            } catch (error) {
+                console.error('Error creating DataTable:', error);
+                document.getElementById('loadingMessage').innerHTML = '<p>Error creating table: ' + error.message + '</p>';
+            }
         }
 
         // Initialize with household survey
