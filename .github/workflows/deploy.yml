@@ -1,0 +1,60 @@
+name: Deploy RAPID Dashboard
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+# Allow one concurrent deployment
+concurrency:
+  group: "pages"
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    
+    # Grant GITHUB_TOKEN the permissions required to make a Pages deployment
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+      
+    - name: Setup Pages
+      uses: actions/configure-pages@v4
+      
+    - name: Verify files exist
+      run: |
+        echo "Checking for required files..."
+        ls -la
+        if [ ! -f "index.html" ]; then
+          echo "Error: index.html not found"
+          exit 1
+        fi
+        if [ ! -f "data/ecopen_data_consent_filteredt_10_rows.csv" ]; then
+          echo "Error: EC data file not found"
+          exit 1
+        fi
+        if [ ! -f "data/ccopen_data_consent_filteredt_10_rows.csv" ]; then
+          echo "Error: CC data file not found"
+          exit 1
+        fi
+        echo "All required files found!"
+        
+    - name: Upload artifact
+      uses: actions/upload-pages-artifact@v3
+      with:
+        path: '.'
+        
+    - name: Deploy to GitHub Pages
+      id: deployment
+      uses: actions/deploy-pages@v4
