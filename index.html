@@ -59,6 +59,12 @@
             vertical-align: top !important;
         }
         
+        #dataTable th {
+            background-color: #f8f9fa !important;
+            font-weight: 600 !important;
+            border-bottom: 2px solid #dee2e6 !important;
+        }
+        
         .response-column {
             max-width: 400px;
             line-height: 1.4;
@@ -281,6 +287,7 @@
     <script src="https://cdn.datatables.net/select/1.7.0/js/dataTables.select.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
     <script src="https://cdn.datatables.net/buttons/2.4.2/js/buttons.html5.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 
     <script>
         let currentData = null;
@@ -289,81 +296,57 @@
         let viewMode = 'select';
         let selectedQuestions = [];
 
-        // Use the uploaded CSV data directly (simulating loading from files)
-        async function loadCSV(filename) {
-            console.log(`Loading CSV: ${filename}`);
+        // Parse CSV data using Papa Parse
+        function parseCSV(text) {
+            console.log('Parsing CSV data...');
             
-            try {
-                // Since we have the actual CSV data uploaded, we'll use that
-                let csvData;
-                if (filename.includes('ec') || filename.includes('household')) {
-                    // Use household data
-                    csvData = await window.fs.readFile('ecopen_data_consent_filteredt_10_rows.csv', { encoding: 'utf8' });
-                } else {
-                    // Use provider data
-                    csvData = await window.fs.readFile('ccopen_data_consent_filteredt_10_rows.csv', { encoding: 'utf8' });
+            const result = Papa.parse(text, {
+                header: true,
+                skipEmptyLines: true,
+                dynamicTyping: false,
+                transform: function(value) {
+                    return value === 'NA' || value === 'null' ? '' : value;
                 }
-                
-                const parsed = parseCSV(csvData);
-                console.log(`Successfully parsed: ${parsed.data.length} rows, ${parsed.headers.length} columns`);
-                return parsed;
-            } catch (error) {
-                console.error(`Error loading ${filename}:`, error);
-                throw error;
+            });
+            
+            if (result.errors.length > 0) {
+                console.warn('CSV parsing errors:', result.errors);
             }
+            
+            console.log('Parsed CSV:', result.meta.fields.length, 'columns,', result.data.length, 'rows');
+            
+            return {
+                headers: result.meta.fields,
+                data: result.data.filter(row => {
+                    // Keep rows that have at least one non-empty value
+                    return Object.values(row).some(value => value && value.toString().trim() !== '');
+                })
+            };
         }
 
-        // Parse CSV data properly handling quoted fields
-        function parseCSV(text) {
-            const lines = text.split('\n').filter(line => line.trim());
-            if (lines.length === 0) return { headers: [], data: [] };
+        // Load CSV data using the uploaded files
+        async function loadCSV(surveyType) {
+            console.log(`Loading ${surveyType} survey data...`);
             
-            function parseCSVLine(line) {
-                const result = [];
-                let current = '';
-                let inQuotes = false;
-                let i = 0;
+            try {
+                let filename;
+                if (surveyType === 'household') {
+                    filename = 'ecopen_data_consent_filteredt_10_rows.csv';
+                } else {
+                    filename = 'ccopen_data_consent_filteredt_10_rows.csv';
+                }
                 
-                while (i < line.length) {
-                    const char = line[i];
-                    
-                    if (char === '"') {
-                        if (inQuotes && line[i + 1] === '"') {
-                            current += '"';
-                            i += 2;
-                            continue;
-                        }
-                        inQuotes = !inQuotes;
-                    } else if (char === ',' && !inQuotes) {
-                        result.push(current.trim());
-                        current = '';
-                        i++;
-                        continue;
-                    } else {
-                        current += char;
-                    }
-                    i++;
-                }
-                result.push(current.trim());
-                return result;
+                // Use the uploaded CSV files
+                const csvData = await window.fs.readFile(filename, { encoding: 'utf8' });
+                const parsed = parseCSV(csvData);
+                
+                console.log(`Successfully loaded ${surveyType} data:`, parsed.data.length, 'rows');
+                return parsed;
+                
+            } catch (error) {
+                console.error(`Error loading ${surveyType} data:`, error);
+                throw new Error(`Failed to load ${surveyType} survey data: ${error.message}`);
             }
-            
-            const headers = parseCSVLine(lines[0]);
-            const data = [];
-            
-            for (let i = 1; i < lines.length; i++) {
-                const values = parseCSVLine(lines[i]);
-                if (values.length > 0) {
-                    const row = {};
-                    headers.forEach((header, index) => {
-                        row[header] = values[index] || '';
-                    });
-                    data.push(row);
-                }
-            }
-            
-            console.log(`Parsed ${data.length} rows with ${headers.length} columns`);
-            return { headers, data };
         }
 
         // Load survey type
@@ -380,8 +363,7 @@
             document.getElementById('filtersCard').style.display = 'none';
             
             try {
-                const filename = type === 'household' ? 'ecopen_data_consent_filteredt_10_rows.csv' : 'ccopen_data_consent_filteredt_10_rows.csv';
-                currentData = await loadCSV(filename);
+                currentData = await loadCSV(type);
                 
                 if (currentData && currentData.data.length > 0) {
                     document.getElementById('viewModeCard').style.display = 'block';
@@ -390,10 +372,15 @@
                     // Show/hide household-specific filters
                     document.getElementById('childDisabilityFilter').style.display = type === 'household' ? 'block' : 'none';
                     document.getElementById('familyStructureFilter').style.display = type === 'household' ? 'block' : 'none';
+                    
+                    console.log(`${type} survey loaded successfully`);
+                } else {
+                    throw new Error('No data found in the survey file');
                 }
             } catch (error) {
                 console.error('Failed to load survey data:', error);
-                alert('Error loading data: ' + error.message);
+                alert(`Error loading ${type} survey data: ${error.message}`);
+                document.getElementById('viewModeCard').style.display = 'none';
             }
         }
 
@@ -420,35 +407,48 @@
             const container = document.getElementById('questionCheckboxes');
             container.innerHTML = '';
             
-            if (currentData && currentData.headers) {
-                const metadataColumns = ['month', 'poverty', 'child disability', 'family structure'];
-                const questionColumns = currentData.headers.filter(header => 
-                    !metadataColumns.includes(header) && 
-                    !header.startsWith('TIMER') && 
-                    !header.startsWith('OPEN.') &&
-                    header.length > 15
-                );
-                
-                questionColumns.forEach((question, index) => {
-                    const div = document.createElement('div');
-                    div.className = 'question-checkbox';
-                    
-                    const checkbox = document.createElement('input');
-                    checkbox.type = 'checkbox';
-                    checkbox.id = `question_${index}`;
-                    checkbox.value = question;
-                    checkbox.onchange = updateSelectedQuestions;
-                    
-                    const label = document.createElement('label');
-                    label.htmlFor = `question_${index}`;
-                    label.textContent = question;
-                    label.title = question;
-                    
-                    div.appendChild(checkbox);
-                    div.appendChild(label);
-                    container.appendChild(div);
-                });
+            if (!currentData || !currentData.headers) {
+                container.innerHTML = '<p class="text-danger">No survey data available.</p>';
+                return;
             }
+            
+            // Filter out metadata columns to get only question columns
+            const metadataColumns = ['month', 'poverty', 'child disability', 'family structure'];
+            const questionColumns = currentData.headers.filter(header => 
+                !metadataColumns.includes(header) && 
+                !header.startsWith('TIMER') && 
+                !header.startsWith('OPEN.') &&
+                header.length > 20 // Questions are typically longer
+            );
+            
+            console.log('Available question columns:', questionColumns);
+            
+            if (questionColumns.length === 0) {
+                container.innerHTML = '<p class="text-warning">No question columns found in the data.</p>';
+                return;
+            }
+            
+            questionColumns.forEach((question, index) => {
+                const div = document.createElement('div');
+                div.className = 'question-checkbox';
+                
+                const checkbox = document.createElement('input');
+                checkbox.type = 'checkbox';
+                checkbox.id = `question_${index}`;
+                checkbox.value = question;
+                checkbox.onchange = updateSelectedQuestions;
+                
+                const label = document.createElement('label');
+                label.htmlFor = `question_${index}`;
+                label.textContent = question;
+                label.title = question;
+                
+                div.appendChild(checkbox);
+                div.appendChild(label);
+                container.appendChild(div);
+            });
+            
+            console.log(`Created ${questionColumns.length} question checkboxes`);
         }
 
         // Update selected questions
@@ -468,7 +468,7 @@
             if (selectedQuestions.length > 0) {
                 selectedDiv.style.display = 'block';
                 listDiv.innerHTML = selectedQuestions.map(q => 
-                    `<span class="badge badge-primary mr-2 mb-2">${q.length > 50 ? q.substring(0, 50) + '...' : q}</span>`
+                    `<span class="badge badge-primary mr-2 mb-2" title="${q}">${q.length > 80 ? q.substring(0, 80) + '...' : q}</span>`
                 ).join('');
             } else {
                 selectedDiv.style.display = 'none';
@@ -491,7 +491,12 @@
 
         // Load selected questions
         function loadSelectedQuestions() {
-            if (selectedQuestions.length === 0) return;
+            if (selectedQuestions.length === 0) {
+                alert('Please select at least one question to display.');
+                return;
+            }
+            
+            console.log('Loading selected questions:', selectedQuestions);
             
             document.getElementById('tableTitle').textContent = `Selected Questions (${selectedQuestions.length})`;
             document.getElementById('tableCard').style.display = 'block';
@@ -499,22 +504,40 @@
             document.getElementById('loadingMessage').style.display = 'block';
             document.getElementById('dataTable').style.display = 'none';
             
-            createDataTable(prepareSelectedQuestionsData());
+            const tableData = prepareSelectedQuestionsData();
+            console.log('Prepared table data:', tableData.length, 'rows');
+            
+            if (tableData.length === 0) {
+                document.getElementById('loadingMessage').innerHTML = '<p class="text-warning">No responses found for the selected questions.</p>';
+                return;
+            }
+            
+            createDataTable(tableData);
         }
 
         // Load all data
         function loadAllData() {
+            console.log('Loading all survey data');
+            
             document.getElementById('tableTitle').textContent = 'All Survey Data';
             document.getElementById('tableCard').style.display = 'block';
             document.getElementById('filtersCard').style.display = 'block';
             document.getElementById('loadingMessage').style.display = 'block';
             document.getElementById('dataTable').style.display = 'none';
             
-            createDataTable(prepareAllData());
+            const tableData = prepareAllData();
+            console.log('Prepared all data:', tableData.length, 'rows');
+            
+            createDataTable(tableData);
         }
 
-        // Prepare data for selected questions - FIXED VERSION
+        // Prepare data for selected questions - FIXED
         function prepareSelectedQuestionsData() {
+            if (!currentData || !currentData.data) {
+                console.error('No current data available');
+                return [];
+            }
+            
             const metadataColumns = ['month', 'poverty'];
             if (currentSurveyType === 'household') {
                 metadataColumns.push('child disability', 'family structure');
@@ -523,44 +546,49 @@
             const filteredData = [];
             
             currentData.data.forEach((row, index) => {
-                // Check if this row has ANY responses to the selected questions
-                const hasAnyResponse = selectedQuestions.some(question => {
+                // Check if this row has responses to ANY of the selected questions
+                const hasResponse = selectedQuestions.some(question => {
                     const value = row[question];
-                    return value && String(value).trim() !== '' && String(value).trim() !== 'NA';
+                    return value && value.toString().trim() !== '' && value.toString().trim() !== 'NA';
                 });
                 
-                if (hasAnyResponse) {
+                if (hasResponse) {
                     const tableRow = {};
                     
                     // Add metadata columns first
                     metadataColumns.forEach(col => {
-                        if (row[col] !== undefined && row[col] !== null) {
-                            tableRow[col] = row[col];
+                        if (row.hasOwnProperty(col)) {
+                            tableRow[col] = row[col] || '';
                         }
                     });
                     
                     // Add selected question responses
                     selectedQuestions.forEach(question => {
                         const value = row[question];
-                        tableRow[question] = (value && String(value).trim() !== '' && String(value).trim() !== 'NA') ? value : '';
+                        tableRow[question] = (value && value.toString().trim() !== '' && value.toString().trim() !== 'NA') ? value : '';
                     });
                     
                     filteredData.push(tableRow);
                 }
             });
             
-            console.log(`Prepared ${filteredData.length} rows for selected questions`);
+            console.log(`Filtered ${filteredData.length} rows with responses to selected questions`);
             return filteredData;
         }
 
-        // Prepare all data - FIXED VERSION (removed ID column)
+        // Prepare all data - FIXED (no ID column)
         function prepareAllData() {
+            if (!currentData || !currentData.data) {
+                console.error('No current data available');
+                return [];
+            }
+            
             const filteredData = [];
             
             currentData.data.forEach((row, index) => {
                 const tableRow = {};
                 
-                // Add all columns except TIMER and OPEN columns, and don't add artificial ID
+                // Add all columns except TIMER and OPEN columns (no artificial ID)
                 Object.keys(row).forEach(key => {
                     if (!key.startsWith('TIMER') && !key.startsWith('OPEN.')) {
                         tableRow[key] = row[key] || '';
@@ -570,13 +598,15 @@
                 filteredData.push(tableRow);
             });
             
-            console.log(`Prepared ${filteredData.length} rows for all data`);
+            console.log(`Prepared ${filteredData.length} rows for all data view`);
             return filteredData;
         }
 
         // Populate metadata filters
         function populateMetadataFilters() {
-            if (!currentData) return;
+            if (!currentData || !currentData.data) return;
+            
+            console.log('Populating metadata filters...');
             
             // Month filter
             const months = [...new Set(currentData.data.map(row => row.month).filter(m => m && m.trim() !== ''))];
@@ -600,13 +630,15 @@
         // Populate select dropdown
         function populateSelect(selectId, values) {
             const select = document.getElementById(selectId);
+            if (!select) return;
+            
             const currentValue = select.value;
             
             // Keep the "All" option and add new options
             select.innerHTML = select.children[0].outerHTML;
             
             values.forEach(value => {
-                if (value) {
+                if (value && value.trim() !== '') {
                     const option = document.createElement('option');
                     option.value = value;
                     option.textContent = value;
@@ -643,45 +675,55 @@
             });
         }
 
-        // Create DataTable - FIXED VERSION
+        // Create DataTable - FIXED for proper headers and no ID column
         function createDataTable(data) {
+            // Destroy existing table
             if (dataTable) {
                 dataTable.destroy();
-                $('#dataTable').empty();
+                dataTable = null;
             }
             
-            if (data.length === 0) {
-                document.getElementById('loadingMessage').innerHTML = '<p>No data found for the selected criteria.</p>';
+            // Clear table
+            $('#dataTable').empty();
+            
+            if (!data || data.length === 0) {
+                document.getElementById('loadingMessage').innerHTML = '<p class="text-warning">No data available to display.</p>';
                 return;
             }
             
-            console.log('Creating table with', data.length, 'rows');
+            console.log('Creating DataTable with', data.length, 'rows');
+            console.log('Sample row:', data[0]);
             
-            // Create columns based on data
-            const sampleRow = data[0];
-            const columns = Object.keys(sampleRow).map(key => {
+            // Get column names from the first data row
+            const columnNames = Object.keys(data[0]);
+            console.log('Column names:', columnNames);
+            
+            // Create column definitions
+            const columns = columnNames.map(columnName => {
                 let width = '12%';
-                if (['month', 'poverty', 'child disability', 'family structure'].includes(key)) {
+                if (['month', 'poverty', 'child disability', 'family structure'].includes(columnName)) {
                     width = '10%';
-                } else if (key.length > 50) {
-                    width = '25%'; // Question columns
+                } else if (columnName.length > 50) {
+                    width = '25%'; // Question columns get more space
                 }
                 
                 return {
-                    title: key, // This ensures column headers are shown
-                    data: key,
+                    title: columnName,
+                    data: columnName,
                     width: width,
                     defaultContent: '',
                     render: function(data, type, row) {
-                        if (type === 'display' && data && data.length > 100) {
-                            return data.substring(0, 100) + '...';
+                        if (type === 'display' && data && data.length > 150) {
+                            return data.substring(0, 150) + '...';
                         }
                         return data || '';
                     }
                 };
             });
             
-            // Initialize DataTable with proper configuration
+            console.log('Column definitions:', columns);
+            
+            // Initialize DataTable
             dataTable = $('#dataTable').DataTable({
                 data: data,
                 columns: columns,
@@ -694,17 +736,22 @@
                 columnDefs: [
                     { targets: '_all', className: 'text-left' }
                 ],
-                destroy: true, // Allow reinitialization
+                destroy: true,
                 initComplete: function() {
                     console.log('DataTable initialized successfully');
                     document.getElementById('loadingMessage').style.display = 'none';
                     document.getElementById('dataTable').style.display = 'table';
+                },
+                error: function(xhr, error, thrown) {
+                    console.error('DataTable error:', error, thrown);
+                    document.getElementById('loadingMessage').innerHTML = '<p class="text-danger">Error creating table: ' + error + '</p>';
                 }
             });
         }
 
         // Initialize
         window.onload = function() {
+            console.log('Page loaded, initializing...');
             loadSurveyType('household');
         };
     </script>
