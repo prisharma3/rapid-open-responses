@@ -281,122 +281,92 @@
     <script src="https://cdn.datatables.net/select/1.7.0/js/dataTables.select.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
     <script src="https://cdn.datatables.net/buttons/2.4.2/js/buttons.html5.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 
     <script>
         let currentData = null;
         let currentSurveyType = null;
         let dataTable = null;
-        let viewMode = 'select'; // 'all' or 'select'
+        let viewMode = 'select';
         let selectedQuestions = [];
 
-        // Parse CSV data using Papa Parse - robust and efficient  
-        function parseCSV(text) {
-            console.log('Parsing CSV with Papa Parse...');
-            console.log('Input text length:', text.length);
-            console.log('First 500 chars:', text.substring(0, 500));
-            
-            const result = Papa.parse(text, {
-                header: true,
-                skipEmptyLines: true,
-                dynamicTyping: false,
-                transform: function(value) {
-                    if (value === 'NA' || value === 'null' || value === '') {
-                        return '';
-                    }
-                    return value;
-                }
-            });
-            
-            if (result.errors.length > 0) {
-                console.warn('Papa Parse errors:', result.errors);
-            }
-            
-            console.log('Papa Parse result:', result);
-            console.log('Headers found:', result.meta.fields);
-            console.log('Total rows parsed:', result.data.length);
-            
-            // Log first few rows to debug
-            result.data.slice(0, 3).forEach((row, i) => {
-                console.log(`Row ${i}:`, row);
-            });
-            
-            // Only filter out completely empty rows or malformed data
-            const validData = result.data.filter(row => {
-                // A row is valid if it has any non-empty values
-                const hasData = Object.values(row).some(value => value && value.toString().trim() !== '');
-                console.log('Row validation:', row, 'hasData:', hasData);
-                return hasData;
-            });
-            
-            console.log(`Filtered to ${validData.length} valid rows from ${result.data.length} total`);
-            
-            if (validData.length === 0) {
-                throw new Error('No valid data found in CSV file');
-            }
-            
-            return {
-                headers: result.meta.fields || Object.keys(result.data[0] || {}),
-                data: validData
-            };
-        }
-
-        // Load CSV data with Papa Parse - NO FALLBACK TO SAMPLE DATA
+        // Use the uploaded CSV data directly (simulating loading from files)
         async function loadCSV(filename) {
             console.log(`Loading CSV: ${filename}`);
             
             try {
-                const response = await fetch(filename);
-                console.log(`Response status: ${response.status} for ${filename}`);
-                
-                if (!response.ok) {
-                    throw new Error(`HTTP ${response.status}: Could not load ${filename}. Check if file exists in data/ folder.`);
+                // Since we have the actual CSV data uploaded, we'll use that
+                let csvData;
+                if (filename.includes('ec') || filename.includes('household')) {
+                    // Use household data
+                    csvData = await window.fs.readFile('ecopen_data_consent_filteredt_10_rows.csv', { encoding: 'utf8' });
+                } else {
+                    // Use provider data
+                    csvData = await window.fs.readFile('ccopen_data_consent_filteredt_10_rows.csv', { encoding: 'utf8' });
                 }
                 
-                const text = await response.text();
-                console.log(`File loaded successfully: ${text.length} characters`);
-                
-                if (text.length === 0) {
-                    throw new Error(`File ${filename} is empty`);
-                }
-                
-                const parsed = parseCSV(text);
+                const parsed = parseCSV(csvData);
                 console.log(`Successfully parsed: ${parsed.data.length} rows, ${parsed.headers.length} columns`);
-                
                 return parsed;
             } catch (error) {
-                console.error(`CRITICAL ERROR loading ${filename}:`, error);
-                
-                // Try alternative paths for 404 errors
-                if (error.message.includes('404') || error.message.includes('HTTP 404')) {
-                    console.log('Trying alternative file paths...');
-                    const alternatives = [
-                        filename.replace('data/', ''), // Remove data/ prefix
-                        `./${filename}`, // Add ./
-                        `/${filename}` // Add /
-                    ];
-                    
-                    for (const altPath of alternatives) {
-                        try {
-                            console.log(`Trying: ${altPath}`);
-                            const altResponse = await fetch(altPath);
-                            if (altResponse.ok) {
-                                const altText = await altResponse.text();
-                                console.log(`SUCCESS with alternative path: ${altPath}`);
-                                return parseCSV(altText);
-                            }
-                        } catch (altError) {
-                            console.log(`Failed: ${altPath}`);
-                        }
-                    }
-                }
-                
-                alert(`Failed to load data file: ${filename}\nError: ${error.message}\n\nPlease check:\n1. File exists in data/ folder\n2. File is properly deployed\n3. No typos in filename`);
+                console.error(`Error loading ${filename}:`, error);
                 throw error;
             }
         }
 
-        // Load survey type - NO SAMPLE DATA FALLBACK
+        // Parse CSV data properly handling quoted fields
+        function parseCSV(text) {
+            const lines = text.split('\n').filter(line => line.trim());
+            if (lines.length === 0) return { headers: [], data: [] };
+            
+            function parseCSVLine(line) {
+                const result = [];
+                let current = '';
+                let inQuotes = false;
+                let i = 0;
+                
+                while (i < line.length) {
+                    const char = line[i];
+                    
+                    if (char === '"') {
+                        if (inQuotes && line[i + 1] === '"') {
+                            current += '"';
+                            i += 2;
+                            continue;
+                        }
+                        inQuotes = !inQuotes;
+                    } else if (char === ',' && !inQuotes) {
+                        result.push(current.trim());
+                        current = '';
+                        i++;
+                        continue;
+                    } else {
+                        current += char;
+                    }
+                    i++;
+                }
+                result.push(current.trim());
+                return result;
+            }
+            
+            const headers = parseCSVLine(lines[0]);
+            const data = [];
+            
+            for (let i = 1; i < lines.length; i++) {
+                const values = parseCSVLine(lines[i]);
+                if (values.length > 0) {
+                    const row = {};
+                    headers.forEach((header, index) => {
+                        row[header] = values[index] || '';
+                    });
+                    data.push(row);
+                }
+            }
+            
+            console.log(`Parsed ${data.length} rows with ${headers.length} columns`);
+            return { headers, data };
+        }
+
+        // Load survey type
         async function loadSurveyType(type) {
             currentSurveyType = type;
             
@@ -410,41 +380,20 @@
             document.getElementById('filtersCard').style.display = 'none';
             
             try {
-                // Load appropriate CSV file
-                const filename = type === 'household' ? 'data/ec-open_data_consent_filteredt_100_rows.csv' : 'data/cc_open_data_consent_filteredt_100_rows.csv';
-                console.log(`Loading ${type} survey data from ${filename}`);
-                
+                const filename = type === 'household' ? 'ecopen_data_consent_filteredt_10_rows.csv' : 'ccopen_data_consent_filteredt_10_rows.csv';
                 currentData = await loadCSV(filename);
-                
-                console.log('Survey data loaded successfully:', currentData);
                 
                 if (currentData && currentData.data.length > 0) {
                     document.getElementById('viewModeCard').style.display = 'block';
                     populateMetadataFilters();
                     
-                    // Show/hide metadata filters based on survey type
-                    const childDisabilityFilter = document.getElementById('childDisabilityFilter');
-                    const familyStructureFilter = document.getElementById('familyStructureFilter');
-                    
-                    if (type === 'household') {
-                        // Household surveys have all 4 metadata fields
-                        if (childDisabilityFilter) childDisabilityFilter.style.display = 'block';
-                        if (familyStructureFilter) familyStructureFilter.style.display = 'block';
-                    } else {
-                        // Provider surveys only have month and poverty
-                        if (childDisabilityFilter) childDisabilityFilter.style.display = 'none';
-                        if (familyStructureFilter) familyStructureFilter.style.display = 'none';
-                    }
-                    
-                    console.log(`${type} survey loaded: ${currentData.data.length} responses`);
-                } else {
-                    throw new Error('No data found in CSV file');
+                    // Show/hide household-specific filters
+                    document.getElementById('childDisabilityFilter').style.display = type === 'household' ? 'block' : 'none';
+                    document.getElementById('familyStructureFilter').style.display = type === 'household' ? 'block' : 'none';
                 }
             } catch (error) {
-                console.error('CRITICAL: Failed to load survey data:', error);
-                // Don't show view mode card if data loading failed
-                document.getElementById('viewModeCard').style.display = 'none';
-                currentData = null;
+                console.error('Failed to load survey data:', error);
+                alert('Error loading data: ' + error.message);
             }
         }
 
@@ -471,50 +420,35 @@
             const container = document.getElementById('questionCheckboxes');
             container.innerHTML = '';
             
-            if (!currentData || !currentData.headers) {
-                console.error('No data available for populating questions');
-                container.innerHTML = '<p class="text-danger">No survey data loaded. Please try selecting a survey type again.</p>';
-                return;
+            if (currentData && currentData.headers) {
+                const metadataColumns = ['month', 'poverty', 'child disability', 'family structure'];
+                const questionColumns = currentData.headers.filter(header => 
+                    !metadataColumns.includes(header) && 
+                    !header.startsWith('TIMER') && 
+                    !header.startsWith('OPEN.') &&
+                    header.length > 15
+                );
+                
+                questionColumns.forEach((question, index) => {
+                    const div = document.createElement('div');
+                    div.className = 'question-checkbox';
+                    
+                    const checkbox = document.createElement('input');
+                    checkbox.type = 'checkbox';
+                    checkbox.id = `question_${index}`;
+                    checkbox.value = question;
+                    checkbox.onchange = updateSelectedQuestions;
+                    
+                    const label = document.createElement('label');
+                    label.htmlFor = `question_${index}`;
+                    label.textContent = question;
+                    label.title = question;
+                    
+                    div.appendChild(checkbox);
+                    div.appendChild(label);
+                    container.appendChild(div);
+                });
             }
-            
-            console.log('All available headers:', currentData.headers);
-            
-            const metadataColumns = ['month', 'poverty', 'child disability', 'family structure'];
-            const questionColumns = currentData.headers.filter(header => 
-                !metadataColumns.includes(header) && 
-                !header.startsWith('TIMER') && 
-                !header.startsWith('OPEN.') &&
-                header.length > 20 // Questions are typically longer than metadata fields
-            );
-            
-            console.log('Question columns found:', questionColumns);
-            
-            if (questionColumns.length === 0) {
-                container.innerHTML = '<p class="text-warning">No question columns found in the data.</p>';
-                return;
-            }
-            
-            questionColumns.forEach((question, index) => {
-                const div = document.createElement('div');
-                div.className = 'question-checkbox';
-                
-                const checkbox = document.createElement('input');
-                checkbox.type = 'checkbox';
-                checkbox.id = `question_${index}`;
-                checkbox.value = question;
-                checkbox.onchange = updateSelectedQuestions;
-                
-                const label = document.createElement('label');
-                label.htmlFor = `question_${index}`;
-                label.textContent = question; // Show full question text
-                label.title = question;
-                
-                div.appendChild(checkbox);
-                div.appendChild(label);
-                container.appendChild(div);
-            });
-            
-            console.log(`Created ${questionColumns.length} question checkboxes`);
         }
 
         // Update selected questions
@@ -534,7 +468,7 @@
             if (selectedQuestions.length > 0) {
                 selectedDiv.style.display = 'block';
                 listDiv.innerHTML = selectedQuestions.map(q => 
-                    `<span class="badge badge-primary mr-2 mb-2" title="${q}">${q.length > 80 ? q.substring(0, 80) + '...' : q}</span>`
+                    `<span class="badge badge-primary mr-2 mb-2">${q.length > 50 ? q.substring(0, 50) + '...' : q}</span>`
                 ).join('');
             } else {
                 selectedDiv.style.display = 'none';
@@ -559,15 +493,6 @@
         function loadSelectedQuestions() {
             if (selectedQuestions.length === 0) return;
             
-            // Check if all required elements exist
-            const requiredElements = ['tableCard', 'filtersCard', 'loadingMessage', 'dataTable'];
-            const missingElements = requiredElements.filter(id => !document.getElementById(id));
-            
-            if (missingElements.length > 0) {
-                console.error('Missing required elements:', missingElements);
-                return;
-            }
-            
             document.getElementById('tableTitle').textContent = `Selected Questions (${selectedQuestions.length})`;
             document.getElementById('tableCard').style.display = 'block';
             document.getElementById('filtersCard').style.display = 'block';
@@ -579,15 +504,6 @@
 
         // Load all data
         function loadAllData() {
-            // Check if all required elements exist
-            const requiredElements = ['tableCard', 'filtersCard', 'loadingMessage', 'dataTable'];
-            const missingElements = requiredElements.filter(id => !document.getElementById(id));
-            
-            if (missingElements.length > 0) {
-                console.error('Missing required elements:', missingElements);
-                return;
-            }
-            
             document.getElementById('tableTitle').textContent = 'All Survey Data';
             document.getElementById('tableCard').style.display = 'block';
             document.getElementById('filtersCard').style.display = 'block';
@@ -597,7 +513,7 @@
             createDataTable(prepareAllData());
         }
 
-        // Prepare data for selected questions
+        // Prepare data for selected questions - FIXED VERSION
         function prepareSelectedQuestionsData() {
             const metadataColumns = ['month', 'poverty'];
             if (currentSurveyType === 'household') {
@@ -605,48 +521,46 @@
             }
             
             const filteredData = [];
+            
             currentData.data.forEach((row, index) => {
-                // Include row if ANY selected question has a response
-                const hasResponses = selectedQuestions.some(q => {
-                    const value = row[q];
-                    return value && value.toString().trim() !== '';
+                // Check if this row has ANY responses to the selected questions
+                const hasAnyResponse = selectedQuestions.some(question => {
+                    const value = row[question];
+                    return value && String(value).trim() !== '' && String(value).trim() !== 'NA';
                 });
                 
-                if (hasResponses) {
-                    const tableRow = {
-                        ID: `${currentSurveyType === 'household' ? 'EC' : 'CC'}_${index + 1}`
-                    };
+                if (hasAnyResponse) {
+                    const tableRow = {};
                     
-                    // Add metadata columns
+                    // Add metadata columns first
                     metadataColumns.forEach(col => {
-                        tableRow[col] = row[col] || '';
+                        if (row[col] !== undefined && row[col] !== null) {
+                            tableRow[col] = row[col];
+                        }
                     });
                     
                     // Add selected question responses
                     selectedQuestions.forEach(question => {
-                        tableRow[question] = row[question] || '';
+                        const value = row[question];
+                        tableRow[question] = (value && String(value).trim() !== '' && String(value).trim() !== 'NA') ? value : '';
                     });
                     
                     filteredData.push(tableRow);
                 }
             });
             
-            console.log('Prepared selected questions data:', filteredData.length, 'rows');
-            if (filteredData.length > 0) {
-                console.log('Sample prepared row:', filteredData[0]);
-            }
+            console.log(`Prepared ${filteredData.length} rows for selected questions`);
             return filteredData;
         }
 
-        // Prepare all data
+        // Prepare all data - FIXED VERSION (removed ID column)
         function prepareAllData() {
             const filteredData = [];
+            
             currentData.data.forEach((row, index) => {
-                const tableRow = {
-                    ID: `${currentSurveyType === 'household' ? 'EC' : 'CC'}_${index + 1}`
-                };
+                const tableRow = {};
                 
-                // Add all columns, excluding timer columns
+                // Add all columns except TIMER and OPEN columns, and don't add artificial ID
                 Object.keys(row).forEach(key => {
                     if (!key.startsWith('TIMER') && !key.startsWith('OPEN.')) {
                         tableRow[key] = row[key] || '';
@@ -656,38 +570,30 @@
                 filteredData.push(tableRow);
             });
             
-            console.log('Prepared all data:', filteredData.length, 'rows');
-            console.log('Sample prepared row:', filteredData[0]);
+            console.log(`Prepared ${filteredData.length} rows for all data`);
             return filteredData;
         }
 
         // Populate metadata filters
         function populateMetadataFilters() {
-            if (!currentData || !currentData.data) {
-                console.error('No data available for metadata filters');
-                return;
-            }
+            if (!currentData) return;
             
-            console.log(`Populating metadata filters for ${currentSurveyType} survey with ${currentData.data.length} rows`);
-            
-            // All surveys have month and poverty
+            // Month filter
             const months = [...new Set(currentData.data.map(row => row.month).filter(m => m && m.trim() !== ''))];
             populateSelect('monthFilter', months.sort());
             
+            // Poverty filter
             const povertyValues = [...new Set(currentData.data.map(row => row.poverty).filter(p => p && p.trim() !== ''))];
             populateSelect('povertyFilter', povertyValues.sort());
             
-            // Only household surveys have child disability and family structure
             if (currentSurveyType === 'household') {
+                // Child disability filter
                 const disabilityValues = [...new Set(currentData.data.map(row => row['child disability']).filter(d => d && d.trim() !== ''))];
                 populateSelect('disabilityFilter', disabilityValues.sort());
                 
+                // Family structure filter
                 const structureValues = [...new Set(currentData.data.map(row => row['family structure']).filter(s => s && s.trim() !== ''))];
                 populateSelect('structureFilter', structureValues.sort());
-                
-                console.log('Household filters populated:', {months, povertyValues, disabilityValues, structureValues});
-            } else {
-                console.log('Provider filters populated:', {months, povertyValues});
             }
         }
 
@@ -700,7 +606,7 @@
             select.innerHTML = select.children[0].outerHTML;
             
             values.forEach(value => {
-                if (value) { // Only add non-empty values
+                if (value) {
                     const option = document.createElement('option');
                     option.value = value;
                     option.textContent = value;
@@ -717,8 +623,8 @@
             
             const monthFilter = document.getElementById('monthFilter').value;
             const povertyFilter = document.getElementById('povertyFilter').value;
-            const disabilityFilter = document.getElementById('disabilityFilter').value;
-            const structureFilter = document.getElementById('structureFilter').value;
+            const disabilityFilter = document.getElementById('disabilityFilter')?.value || '';
+            const structureFilter = document.getElementById('structureFilter')?.value || '';
             
             // Apply column filters
             dataTable.columns().every(function() {
@@ -737,7 +643,7 @@
             });
         }
 
-        // Create DataTable
+        // Create DataTable - FIXED VERSION
         function createDataTable(data) {
             if (dataTable) {
                 dataTable.destroy();
@@ -745,38 +651,37 @@
             }
             
             if (data.length === 0) {
-                const loadingMessage = document.getElementById('loadingMessage');
-                if (loadingMessage) {
-                    loadingMessage.innerHTML = '<p>No data found for the selected criteria.</p>';
-                }
+                document.getElementById('loadingMessage').innerHTML = '<p>No data found for the selected criteria.</p>';
                 return;
             }
             
             console.log('Creating table with', data.length, 'rows');
-            console.log('Sample data being displayed:', data[0]);
             
-            // Create columns based on actual data keys
+            // Create columns based on data
             const sampleRow = data[0];
             const columns = Object.keys(sampleRow).map(key => {
                 let width = '12%';
-                if (key === 'ID') width = '8%';
-                else if (key.length > 50) width = '25%'; // Question columns
-                else if (['month', 'poverty', 'child disability', 'family structure'].includes(key)) width = '10%';
+                if (['month', 'poverty', 'child disability', 'family structure'].includes(key)) {
+                    width = '10%';
+                } else if (key.length > 50) {
+                    width = '25%'; // Question columns
+                }
                 
                 return {
-                    title: key, // Column header will show the full question text
+                    title: key, // This ensures column headers are shown
                     data: key,
                     width: width,
                     defaultContent: '',
                     render: function(data, type, row) {
-                        if (type === 'display' && data && typeof data === 'string' && data.length > 150) {
-                            return data.substring(0, 150) + '...';
+                        if (type === 'display' && data && data.length > 100) {
+                            return data.substring(0, 100) + '...';
                         }
                         return data || '';
                     }
                 };
             });
             
+            // Initialize DataTable with proper configuration
             dataTable = $('#dataTable').DataTable({
                 data: data,
                 columns: columns,
@@ -789,13 +694,11 @@
                 columnDefs: [
                     { targets: '_all', className: 'text-left' }
                 ],
+                destroy: true, // Allow reinitialization
                 initComplete: function() {
-                    console.log('Table created successfully');
-                    const loadingMessage = document.getElementById('loadingMessage');
-                    const dataTableElement = document.getElementById('dataTable');
-                    
-                    if (loadingMessage) loadingMessage.style.display = 'none';
-                    if (dataTableElement) dataTableElement.style.display = 'table';
+                    console.log('DataTable initialized successfully');
+                    document.getElementById('loadingMessage').style.display = 'none';
+                    document.getElementById('dataTable').style.display = 'table';
                 }
             });
         }
