@@ -324,20 +324,24 @@
             };
         }
 
-        // Load CSV data using the uploaded files
+        // Load CSV data using fetch for web deployment
         async function loadCSV(surveyType) {
             console.log(`Loading ${surveyType} survey data...`);
             
             try {
                 let filename;
                 if (surveyType === 'household') {
-                    filename = 'ecopen_data_consent_filteredt_100_rows.csv';
+                    filename = 'ec-open_data_consent_filteredt_100_rows.csv';
                 } else {
                     filename = 'cc_open_data_consent_filteredt_100_rows.csv';
                 }
                 
-                // Use the uploaded CSV files
-                const csvData = await window.fs.readFile(filename, { encoding: 'utf8' });
+                // Use fetch to load CSV files for web deployment
+                const response = await fetch(filename);
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                const csvData = await response.text();
                 const parsed = parseCSV(csvData);
                 
                 console.log(`Successfully loaded ${surveyType} data:`, parsed.data.length, 'rows');
