@@ -331,9 +331,9 @@
             try {
                 let filename;
                 if (surveyType === 'household') {
-                    filename = 'ecopen_data_consent_filteredt_10_rows.csv';
+                    filename = 'ecopen_data_consent_filteredt_100_rows.csv';
                 } else {
-                    filename = 'ccopen_data_consent_filteredt_10_rows.csv';
+                    filename = 'cc_open_data_consent_filteredt_100_rows.csv';
                 }
                 
                 // Use the uploaded CSV files
@@ -418,7 +418,7 @@
                 !metadataColumns.includes(header) && 
                 !header.startsWith('TIMER') && 
                 !header.startsWith('OPEN.') &&
-                header.length > 20 // Questions are typically longer
+                header.includes('?') // Questions typically contain question marks
             );
             
             console.log('Available question columns:', questionColumns);
@@ -531,7 +531,7 @@
             createDataTable(tableData);
         }
 
-        // Prepare data for selected questions - FIXED
+        // Prepare data for selected questions - FIXED to properly filter responses
         function prepareSelectedQuestionsData() {
             if (!currentData || !currentData.data) {
                 console.error('No current data available');
@@ -675,7 +675,7 @@
             });
         }
 
-        // Create DataTable - FIXED for proper headers and no ID column
+        // Create DataTable - FIXED for proper headers and consistent display
         function createDataTable(data) {
             // Destroy existing table
             if (dataTable) {
@@ -737,8 +737,14 @@
                     { targets: '_all', className: 'text-left' }
                 ],
                 destroy: true,
+                drawCallback: function() {
+                    // Ensure headers are visible after each draw
+                    $('#dataTable thead').show();
+                },
                 initComplete: function() {
                     console.log('DataTable initialized successfully');
+                    // Force headers to be visible
+                    $('#dataTable thead').show();
                     document.getElementById('loadingMessage').style.display = 'none';
                     document.getElementById('dataTable').style.display = 'table';
                 },
