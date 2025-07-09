@@ -59,10 +59,20 @@
             vertical-align: top !important;
         }
         
+        /* FIXED: Force table headers to be visible */
+        #dataTable thead {
+            display: table-header-group !important;
+        }
+        
         #dataTable th {
             background-color: #f8f9fa !important;
             font-weight: 600 !important;
             border-bottom: 2px solid #dee2e6 !important;
+            position: sticky !important;
+            top: 0 !important;
+            z-index: 10 !important;
+            padding: 12px !important;
+            display: table-cell !important;
         }
         
         .response-column {
@@ -271,8 +281,6 @@
                     <p>Loading data...</p>
                 </div>
                 <table id="dataTable" class="table table-striped table-bordered" style="display: none;">
-                    <thead></thead>
-                    <tbody></tbody>
                 </table>
             </div>
         </div>
@@ -290,6 +298,7 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 
     <script>
+
         let currentData = null;
         let currentSurveyType = null;
         let dataTable = null;
@@ -348,7 +357,6 @@
                 });
                 
                 console.log(`Response status: ${response.status}`);
-                console.log(`Response headers:`, response.headers);
                 
                 if (!response.ok) {
                     // Try alternative path without ./data/ prefix
@@ -375,7 +383,6 @@
                 
                 const csvData = await response.text();
                 console.log(`CSV data length: ${csvData.length} characters`);
-                console.log(`First 200 characters:`, csvData.substring(0, 200));
                 
                 const parsed = parseCSV(csvData);
                 
@@ -384,12 +391,6 @@
                 
             } catch (error) {
                 console.error(`Error loading ${surveyType} data:`, error);
-                console.error(`Full error details:`, error.message);
-                
-                // Try to provide helpful debugging info
-                console.log(`Current URL: ${window.location.href}`);
-                console.log(`Base URL: ${window.location.origin}${window.location.pathname}`);
-                
                 throw new Error(`Failed to load ${surveyType} survey data: ${error.message}`);
             }
         }
@@ -576,7 +577,7 @@
             createDataTable(tableData);
         }
 
-        // Prepare data for selected questions - FIXED to properly filter responses
+        // Prepare data for selected questions
         function prepareSelectedQuestionsData() {
             if (!currentData || !currentData.data) {
                 console.error('No current data available');
@@ -621,7 +622,7 @@
             return filteredData;
         }
 
-        // Prepare all data - FIXED (no ID column)
+        // Prepare all data
         function prepareAllData() {
             if (!currentData || !currentData.data) {
                 console.error('No current data available');
@@ -633,7 +634,7 @@
             currentData.data.forEach((row, index) => {
                 const tableRow = {};
                 
-                // Add all columns except TIMER and OPEN columns (no artificial ID)
+                // Add all columns except TIMER and OPEN columns
                 Object.keys(row).forEach(key => {
                     if (!key.startsWith('TIMER') && !key.startsWith('OPEN.')) {
                         tableRow[key] = row[key] || '';
@@ -694,7 +695,7 @@
             select.value = currentValue;
         }
 
-        // Apply filters
+        // FIXED: Apply filters with exact matching
         function applyFilters() {
             if (!dataTable) return;
             
@@ -703,33 +704,45 @@
             const disabilityFilter = document.getElementById('disabilityFilter')?.value || '';
             const structureFilter = document.getElementById('structureFilter')?.value || '';
             
-            // Apply column filters
+            console.log('Applying filters:', { monthFilter, povertyFilter, disabilityFilter, structureFilter });
+            
+            // Clear all existing searches first
+            dataTable.search('').columns().search('').draw();
+            
+            // Apply column filters with exact matching using regex
             dataTable.columns().every(function() {
                 const column = this;
                 const header = column.header().textContent;
                 
                 let searchValue = '';
-                if (header === 'month' && monthFilter) searchValue = monthFilter;
-                else if (header === 'poverty' && povertyFilter) searchValue = povertyFilter;
-                else if (header === 'child disability' && disabilityFilter) searchValue = disabilityFilter;
-                else if (header === 'family structure' && structureFilter) searchValue = structureFilter;
                 
-                if (column.search() !== searchValue) {
-                    column.search(searchValue).draw();
+                if (header === 'month' && monthFilter) {
+                    searchValue = '^' + monthFilter.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '$';
+                } else if (header === 'poverty' && povertyFilter) {
+                    searchValue = '^' + povertyFilter.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '$';
+                } else if (header === 'child disability' && disabilityFilter) {
+                    searchValue = '^' + disabilityFilter.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '$';
+                } } else if (header === 'family structure' && structureFilter) {
+                    searchValue = '^' + structureFilter.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '$';
+                }
+                
+                if (searchValue !== '') {
+                    console.log(`Setting filter for ${header}: ${searchValue}`);
+                    column.search(searchValue, true, false);
                 }
             });
+            
+            // Draw the table with all filters applied
+            dataTable.draw();
         }
 
-        // Create DataTable - FIXED for proper headers visibility
+        // FIXED: Create DataTable with proper headers and complete functionality
         function createDataTable(data) {
-            // Destroy existing table
+            // Destroy existing table completely
             if (dataTable) {
                 dataTable.destroy();
                 dataTable = null;
             }
-            
-            // Clear table completely
-            $('#dataTable').empty();
             
             if (!data || data.length === 0) {
                 document.getElementById('loadingMessage').innerHTML = '<p class="text-warning">No data available to display.</p>';
@@ -737,48 +750,58 @@
             }
             
             console.log('Creating DataTable with', data.length, 'rows');
-            console.log('Sample row:', data[0]);
             
-            // Get column names from the first data row
+            // Get column names
             const columnNames = Object.keys(data[0]);
             console.log('Column names:', columnNames);
             
-            // Manually create table structure with proper headers
-            let tableHTML = '<thead><tr>';
-            columnNames.forEach(columnName => {
-                tableHTML += `<th>${columnName}</th>`;
-            });
-            tableHTML += '</tr></thead><tbody></tbody>';
+            // Create table structure manually with proper headers
+            const tableElement = document.getElementById('dataTable');
+            tableElement.innerHTML = '';
             
-            // Set the table HTML
-            $('#dataTable').html(tableHTML);
+            // Create and append thead
+            const thead = document.createElement('thead');
+            const headerRow = document.createElement('tr');
+            
+            columnNames.forEach(columnName => {
+                const th = document.createElement('th');
+                th.textContent = columnName;
+                th.style.cssText = `
+                    background-color: #f8f9fa !important;
+                    font-weight: 600 !important;
+                    border-bottom: 2px solid #dee2e6 !important;
+                    position: sticky !important;
+                    top: 0 !important;
+                    z-index: 10 !important;
+                    padding: 12px !important;
+                    display: table-cell !important;
+                `;
+                headerRow.appendChild(th);
+            });
+            
+            thead.appendChild(headerRow);
+            tableElement.appendChild(thead);
+            
+            // Create and append tbody
+            const tbody = document.createElement('tbody');
+            tableElement.appendChild(tbody);
             
             // Create column definitions
-            const columns = columnNames.map(columnName => {
-                let width = '12%';
-                if (['month', 'poverty', 'child disability', 'family structure'].includes(columnName)) {
-                    width = '10%';
-                } else if (columnName.length > 50) {
-                    width = '25%'; // Question columns get more space
-                }
-                
-                return {
-                    title: columnName,
-                    data: columnName,
-                    width: width,
-                    defaultContent: '',
-                    render: function(data, type, row) {
-                        if (type === 'display' && data && data.length > 150) {
-                            return data.substring(0, 150) + '...';
-                        }
-                        return data || '';
+            const columns = columnNames.map(columnName => ({
+                title: columnName,
+                data: columnName,
+                defaultContent: '',
+                render: function(data, type, row) {
+                    if (type === 'display' && data && data.length > 150) {
+                        return data.substring(0, 150) + '...';
                     }
-                };
-            });
+                    return data || '';
+                }
+            }));
             
-            console.log('Column definitions:', columns);
+            console.log('Initializing DataTable with columns:', columns.length);
             
-            // Initialize DataTable with explicit header handling
+            // Initialize DataTable
             dataTable = $('#dataTable').DataTable({
                 data: data,
                 columns: columns,
@@ -788,49 +811,51 @@
                 dom: 'Bfrtip',
                 buttons: ['copy', 'csv', 'excel'],
                 order: [[0, 'asc']],
-                columnDefs: [
-                    { targets: '_all', className: 'text-left' }
-                ],
                 destroy: true,
-                headerCallback: function(thead, data, start, end, display) {
-                    // Ensure headers are always visible and properly styled
-                    $(thead).show();
-                    $(thead).find('th').each(function(index) {
-                        $(this).css({
-                            'background-color': '#f8f9fa',
-                            'font-weight': '600',
-                            'border-bottom': '2px solid #dee2e6',
-                            'padding': '12px',
-                            'text-align': 'left'
-                        });
-                    });
-                },
+                paging: true,
+                searching: true,
+                ordering: true,
+                info: true,
                 drawCallback: function() {
-                    // Ensure headers stay visible after each draw/redraw
+                    // Ensure headers stay visible on every draw
                     $('#dataTable thead').show();
-                    $('#dataTable thead th').css({
-                        'background-color': '#f8f9fa',
-                        'font-weight': '600',
-                        'border-bottom': '2px solid #dee2e6'
+                    $('#dataTable thead th').each(function() {
+                        $(this).css({
+                            'background-color': '#f8f9fa !important',
+                            'font-weight': '600 !important',
+                            'border-bottom': '2px solid #dee2e6 !important',
+                            'position': 'sticky !important',
+                            'top': '0 !important',
+                            'z-index': '10 !important',
+                            'padding': '12px !important',
+                            'display': 'table-cell !important'
+                        });
                     });
                 },
                 initComplete: function() {
                     console.log('DataTable initialized successfully');
                     
-                    // Force headers to be visible and styled
+                    // Force headers to be visible
                     $('#dataTable thead').show();
-                    $('#dataTable thead th').css({
-                        'background-color': '#f8f9fa !important',
-                        'font-weight': '600 !important',
-                        'border-bottom': '2px solid #dee2e6 !important',
-                        'padding': '12px !important'
+                    $('#dataTable thead th').each(function() {
+                        $(this).css({
+                            'background-color': '#f8f9fa !important',
+                            'font-weight': '600 !important',
+                            'border-bottom': '2px solid #dee2e6 !important',
+                            'position': 'sticky !important',
+                            'top': '0 !important',
+                            'z-index': '10 !important',
+                            'padding': '12px !important',
+                            'display': 'table-cell !important'
+                        });
                     });
                     
                     // Show the table
                     document.getElementById('loadingMessage').style.display = 'none';
                     document.getElementById('dataTable').style.display = 'table';
                     
-                    console.log('Headers should now be visible');
+                    console.log('Table should now be visible with headers');
+                    console.log('Headers HTML:', $('#dataTable thead')[0].outerHTML);
                 },
                 error: function(xhr, error, thrown) {
                     console.error('DataTable error:', error, thrown);
@@ -844,6 +869,7 @@
             console.log('Page loaded, initializing...');
             loadSurveyType('household');
         };
-    </script>
+
+        </script>
 </body>
 </html>
