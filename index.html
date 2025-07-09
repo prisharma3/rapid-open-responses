@@ -125,6 +125,22 @@
             border-radius: 5px;
             margin-bottom: 15px;
         }
+
+        /* Force DataTable headers to be visible */
+#dataTable thead {
+    display: table-header-group !important;
+    visibility: visible !important;
+}
+
+#dataTable thead th {
+    background-color: #f8f9fa !important;
+    font-weight: 600 !important;
+    border-bottom: 2px solid #dee2e6 !important;
+    padding: 12px !important;
+    display: table-cell !important;
+    visibility: visible !important;
+    text-align: left !important;
+}
     </style>
 </head>
 <body>
@@ -430,71 +446,78 @@
         }
 
         // Set view mode
-        function setViewMode(mode) {
-            viewMode = mode;
-            
-            // Update button states
-            document.getElementById('viewAllBtn').className = mode === 'all' ? 'btn btn-secondary' : 'btn btn-outline-secondary';
-            document.getElementById('selectQuestionsBtn').className = mode === 'select' ? 'btn btn-secondary' : 'btn btn-outline-secondary';
-            
-            if (mode === 'all') {
-                document.getElementById('questionCard').style.display = 'none';
-                loadAllData();
-            } else {
-                populateQuestionCheckboxes();
-                document.getElementById('questionCard').style.display = 'block';
-                document.getElementById('tableCard').style.display = 'none';
-            }
-        }
+        // Set view mode
+function setViewMode(mode) {
+    viewMode = mode;
+    
+    // Update button states - use blue colors
+    document.getElementById('viewAllBtn').className = mode === 'all' ? 'btn btn-primary' : 'btn btn-outline-primary';
+    document.getElementById('selectQuestionsBtn').className = mode === 'select' ? 'btn btn-primary' : 'btn btn-outline-primary';
+    
+    if (mode === 'all') {
+        document.getElementById('questionCard').style.display = 'none';
+        loadAllData();
+    } else {
+        populateQuestionCheckboxes();
+        document.getElementById('questionCard').style.display = 'block';
+        document.getElementById('tableCard').style.display = 'none';
+    }
+}
 
         // Populate question checkboxes
-        function populateQuestionCheckboxes() {
-            const container = document.getElementById('questionCheckboxes');
-            container.innerHTML = '';
-            
-            if (!currentData || !currentData.headers) {
-                container.innerHTML = '<p class="text-danger">No survey data available.</p>';
-                return;
-            }
-            
-            // Filter out metadata columns to get only question columns
-            const metadataColumns = ['month', 'poverty', 'child disability', 'family structure'];
-            const questionColumns = currentData.headers.filter(header => 
-                !metadataColumns.includes(header) && 
-                !header.startsWith('TIMER') && 
-                !header.startsWith('OPEN.') &&
-                header.includes('?') // Questions typically contain question marks
-            );
-            
-            console.log('Available question columns:', questionColumns);
-            
-            if (questionColumns.length === 0) {
-                container.innerHTML = '<p class="text-warning">No question columns found in the data.</p>';
-                return;
-            }
-            
-            questionColumns.forEach((question, index) => {
-                const div = document.createElement('div');
-                div.className = 'question-checkbox';
-                
-                const checkbox = document.createElement('input');
-                checkbox.type = 'checkbox';
-                checkbox.id = `question_${index}`;
-                checkbox.value = question;
-                checkbox.onchange = updateSelectedQuestions;
-                
-                const label = document.createElement('label');
-                label.htmlFor = `question_${index}`;
-                label.textContent = question;
-                label.title = question;
-                
-                div.appendChild(checkbox);
-                div.appendChild(label);
-                container.appendChild(div);
-            });
-            
-            console.log(`Created ${questionColumns.length} question checkboxes`);
+        // Populate question checkboxes
+function populateQuestionCheckboxes() {
+    const container = document.getElementById('questionCheckboxes');
+    container.innerHTML = '';
+    
+    if (!currentData || !currentData.headers) {
+        container.innerHTML = '<p class="text-danger">No survey data available.</p>';
+        return;
+    }
+    
+    // Filter out metadata columns to get only question columns
+    const metadataColumns = ['month', 'poverty', 'child disability', 'family structure'];
+    const questionColumns = currentData.headers.filter(header => 
+        !metadataColumns.includes(header.toLowerCase()) && 
+        header.includes('?') // Questions contain question marks
+    );
+    
+    console.log('Available question columns:', questionColumns);
+    
+    if (questionColumns.length === 0) {
+        container.innerHTML = '<p class="text-warning">No question columns found in the data.</p>';
+        return;
+    }
+    
+    questionColumns.forEach((question, index) => {
+        const div = document.createElement('div');
+        div.className = 'question-checkbox';
+        
+        const checkbox = document.createElement('input');
+        checkbox.type = 'checkbox';
+        checkbox.id = `question_${index}`;
+        checkbox.value = question;
+        checkbox.onchange = updateSelectedQuestions;
+        
+        const label = document.createElement('label');
+        label.htmlFor = `question_${index}`;
+        // Clean display text by removing _1, _2 etc and splitting on quotes
+        let displayText = question.replace(/_\d+$/, '');
+        if (displayText.includes('","')) {
+            displayText = displayText.split('","')[0];
         }
+        displayText = displayText.replace(/^["']+|["']+$/g, '').trim();
+        
+        label.textContent = displayText;
+        label.title = displayText;
+        
+        div.appendChild(checkbox);
+        div.appendChild(label);
+        container.appendChild(div);
+    });
+    
+    console.log(`Created ${questionColumns.length} question checkboxes`);
+}
 
         // Update selected questions
         function updateSelectedQuestions() {
@@ -577,49 +600,43 @@
         }
 
         // Prepare data for selected questions - FIXED to properly filter responses
-        function prepareSelectedQuestionsData() {
-            if (!currentData || !currentData.data) {
-                console.error('No current data available');
-                return [];
+        // Prepare data for selected questions
+function prepareSelectedQuestionsData() {
+    if (!currentData || !currentData.data) {
+        console.error('No current data available');
+        return [];
+    }
+    
+    const metadataColumns = ['month', 'poverty'];
+    if (currentSurveyType === 'household') {
+        metadataColumns.push('child disability', 'family structure');
+    }
+    
+    const filteredData = [];
+    
+    currentData.data.forEach((row, index) => {
+        const tableRow = {};
+        
+        // Add metadata columns first
+        metadataColumns.forEach(col => {
+            if (row.hasOwnProperty(col)) {
+                tableRow[col] = row[col] || '';
             }
-            
-            const metadataColumns = ['month', 'poverty'];
-            if (currentSurveyType === 'household') {
-                metadataColumns.push('child disability', 'family structure');
-            }
-            
-            const filteredData = [];
-            
-            currentData.data.forEach((row, index) => {
-                // Check if this row has responses to ANY of the selected questions
-                const hasResponse = selectedQuestions.some(question => {
-                    const value = row[question];
-                    return value && value.toString().trim() !== '' && value.toString().trim() !== 'NA';
-                });
-                
-                if (hasResponse) {
-                    const tableRow = {};
-                    
-                    // Add metadata columns first
-                    metadataColumns.forEach(col => {
-                        if (row.hasOwnProperty(col)) {
-                            tableRow[col] = row[col] || '';
-                        }
-                    });
-                    
-                    // Add selected question responses
-                    selectedQuestions.forEach(question => {
-                        const value = row[question];
-                        tableRow[question] = (value && value.toString().trim() !== '' && value.toString().trim() !== 'NA') ? value : '';
-                    });
-                    
-                    filteredData.push(tableRow);
-                }
-            });
-            
-            console.log(`Filtered ${filteredData.length} rows with responses to selected questions`);
-            return filteredData;
-        }
+        });
+        
+        // Add selected question responses
+        selectedQuestions.forEach(question => {
+            const value = row[question];
+            tableRow[question] = (value && value.toString().trim() !== '' && value.toString().trim() !== 'NA') ? value : '';
+        });
+        
+        // Include all rows for consistency with "View All"
+        filteredData.push(tableRow);
+    });
+    
+    console.log(`Prepared ${filteredData.length} rows with selected questions`);
+    return filteredData;
+}
 
         // Prepare all data - FIXED (no ID column)
         function prepareAllData() {
