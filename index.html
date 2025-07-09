@@ -28,9 +28,10 @@
             color: white !important;
         }
         
-        .container {
-            max-width: 1400px;
-        }
+.container {
+    max-width: 95%;
+    width: 95%;
+}
         
         .card {
             border: none;
@@ -125,6 +126,43 @@
             border-radius: 5px;
             margin-bottom: 15px;
         }
+
+        /* Fix column width alignment */
+#dataTable {
+    table-layout: fixed;
+    width: 100% !important;
+}
+
+#dataTable th,
+#dataTable td {
+    word-wrap: break-word;
+    white-space: normal;
+    vertical-align: top;
+    padding: 8px 12px;
+}
+
+#dataTable th {
+    font-size: 12px;
+    line-height: 1.3;
+}
+
+#dataTable td {
+    font-size: 13px;
+    line-height: 1.4;
+}
+
+/* Specific width for metadata columns */
+#dataTable th:nth-child(1),
+#dataTable td:nth-child(1) { width: 8%; }  /* month */
+#dataTable th:nth-child(2),
+#dataTable td:nth-child(2) { width: 12%; } /* poverty */
+
+/* Question columns get equal remaining width */
+#dataTable th:nth-child(n+3),
+#dataTable td:nth-child(n+3) { 
+    width: auto;
+    min-width: 200px;
+}
 
         /* Force DataTable headers to be visible */
 #dataTable thead {
@@ -448,9 +486,13 @@
         async function loadSurveyType(type) {
             currentSurveyType = type;
             
-            // Update button states
-            document.getElementById('householdBtn').className = type === 'household' ? 'btn btn-primary' : 'btn btn-outline-primary';
-            document.getElementById('providerBtn').className = type === 'provider' ? 'btn btn-primary' : 'btn btn-outline-primary';
+// Update button states
+document.getElementById('householdBtn').className = type === 'household' ? 'btn btn-primary' : 'btn btn-outline-primary';
+document.getElementById('providerBtn').className = type === 'provider' ? 'btn btn-primary' : 'btn btn-outline-primary';
+
+// Reset view mode buttons to unselected state
+document.getElementById('viewAllBtn').className = 'btn btn-outline-primary';
+document.getElementById('selectQuestionsBtn').className = 'btn btn-outline-primary';
             
             // Hide subsequent cards
             document.getElementById('tableCard').style.display = 'none';
@@ -834,40 +876,49 @@ function createDataTable(data) {
         }
     }));
     
-    // Initialize DataTable with minimal options
-    dataTable = $('#dataTable').DataTable({
-        data: data,
-        columns: columns,
-        pageLength: 20,
-        scrollX: true,
-        dom: 'Bfrtip',
-        buttons: ['copy', 'csv', 'excel'],
-        destroy: true,
-        drawCallback: function() {
-            // Force headers to show after each draw
-            $('#dataTable thead').show();
-        },
-        initComplete: function() {
-            console.log('DataTable initialized');
-            // Force headers to show
-            $('#dataTable thead').show();
-            $('#dataTable').show();
-            document.getElementById('loadingMessage').style.display = 'none';
-            document.getElementById('dataTable').style.display = 'table';
-            
-            // Log header info for debugging
-            console.log('Header count:', $('#dataTable thead th').length);
-            $('#dataTable thead th').each(function(i) {
-                console.log('Header', i, ':', $(this).text());
-            });
+// Initialize DataTable with proper settings
+dataTable = $('#dataTable').DataTable({
+    data: data,
+    columns: columns,
+    pageLength: 20,
+    lengthMenu: [10, 20, 50, 100],
+    scrollX: true,
+    autoWidth: false,
+    dom: 'Blfrtip',
+    buttons: ['copy', 'csv', 'excel'],
+    destroy: true,
+    columnDefs: [
+        {
+            targets: '_all',
+            className: 'text-left align-top'
         }
-    });
+    ],
+    drawCallback: function() {
+        // Force headers to show after each draw
+        $('#dataTable thead').show();
+    },
+    initComplete: function() {
+        console.log('DataTable initialized with', data.length, 'total rows');
+        
+        // Force headers to show and fix alignment
+        $('#dataTable thead').show();
+        $('#dataTable').show();
+        
+        // Hide loading message and show table
+        document.getElementById('loadingMessage').style.display = 'none';
+        document.getElementById('dataTable').style.display = 'table';
+        
+        // Force column width recalculation
+        dataTable.columns.adjust().draw();
+        
+        console.log('Table displayed with', $('#dataTable tbody tr').length, 'visible rows');
+    }
+});
 }
 
         // Initialize
-        window.onload = function() {
-            console.log('Page loaded, initializing...');
-            loadSurveyType('household');
+window.onload = function() {
+    console.log('Page loaded, ready for user selection...');
         };
     </script>
 </body>
