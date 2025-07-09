@@ -745,9 +745,18 @@ function createDataTable(data) {
     const columnNames = Object.keys(data[0]);
     console.log('Column names:', columnNames);
     
-    // Don't manually create HTML - let DataTables handle it
-    // Just ensure the table has basic structure
-    $('#dataTable').html('<thead></thead><tbody></tbody>');
+// Clear the table but preserve the basic structure for DataTables
+const table = $('#dataTable');
+table.find('thead').empty();
+table.find('tbody').empty();
+
+// Ensure we have the proper table structure
+if (table.find('thead').length === 0) {
+    table.prepend('<thead></thead>');
+}
+if (table.find('tbody').length === 0) {
+    table.append('<tbody></tbody>');
+}
             
             // Create column definitions
             const columns = columnNames.map(columnName => {
@@ -788,6 +797,8 @@ function createDataTable(data) {
                     { targets: '_all', className: 'text-left' }
                 ],
                 destroy: true,
+                 processing: false,  // Add this
+    serverSide: false,  // Add this
                 headerCallback: function(thead, data, start, end, display) {
                     // Ensure headers are always visible and properly styled
                     $(thead).show();
