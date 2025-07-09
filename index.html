@@ -340,6 +340,39 @@
             };
         }
 
+        function debugDataStructure() {
+    console.log('=== DEBUG DATA STRUCTURE ===');
+    console.log('Current data exists:', !!currentData);
+    console.log('Headers exist:', !!currentData?.headers);
+    console.log('Data exists:', !!currentData?.data);
+    
+    if (currentData?.headers) {
+        console.log('Total headers:', currentData.headers.length);
+        console.log('First 5 headers:', currentData.headers.slice(0, 5));
+        console.log('Headers with question marks:');
+        currentData.headers.forEach((header, index) => {
+            if (header.includes('?')) {
+                console.log(`${index}: "${header}"`);
+            }
+        });
+    }
+    
+    if (currentData?.data && currentData.data.length > 0) {
+        console.log('Sample row keys:', Object.keys(currentData.data[0]));
+        console.log('Sample row:', currentData.data[0]);
+    }
+    
+    // Check if DataTable exists and has headers
+    if (dataTable) {
+        console.log('DataTable headers:');
+        $('#dataTable thead th').each(function(index) {
+            console.log(`Header ${index}:`, $(this).text());
+        });
+        console.log('DataTable header visibility:', $('#dataTable thead').is(':visible'));
+        console.log('DataTable header CSS display:', $('#dataTable thead').css('display'));
+    }
+} // remove later
+
         // Load CSV data using fetch with better error handling and CSV support
         async function loadCSV(surveyType) {
             console.log(`Loading ${surveyType} survey data...`);
@@ -396,6 +429,7 @@
                 const parsed = parseCSV(csvData);
                 
                 console.log(`Successfully loaded ${surveyType} data:`, parsed.data.length, 'rows');
+                 debugDataStructure(); //remove later
                 return parsed;
                 
             } catch (error) {
@@ -764,8 +798,8 @@ function prepareSelectedQuestionsData() {
             });
         }
 
-// Create DataTable - FIXED for proper headers visibility
-// Create DataTable - FIXED for proper headers visibility
+// Try this simpler fix for headers - replace the createDataTable function with this:
+
 function createDataTable(data) {
     // Destroy existing table
     if (dataTable) {
@@ -784,76 +818,48 @@ function createDataTable(data) {
     const columnNames = Object.keys(data[0]);
     console.log('Column names:', columnNames);
     
-    // Completely rebuild table structure
-    const tableHtml = `
-        <table id="dataTable" class="table table-striped table-bordered">
-            <thead>
-                <tr>
-                    ${columnNames.map(col => {
-                        // Clean column name for display
-                        let displayName = col;
-                        if (col.includes('"_1,"') || col.includes('_1,"')) {
-                            displayName = col.split(/["_\d]+,["]*/).map(q => q.trim().replace(/^["']+|["']+$/g, '')).join(' | ');
-                        } else if (col.includes('","')) {
-                            displayName = col.split('","').map(q => q.trim().replace(/^["']+|["']+$/g, '')).join(' | ');
-                        }
-                        displayName = displayName.replace(/["'_\d]*$/, '').trim();
-                        
-                        return `<th>${displayName}</th>`;
-                    }).join('')}
-                </tr>
-            </thead>
-            <tbody></tbody>
-        </table>
-    `;
-    
-    // Replace the table
-    document.getElementById('dataTable').outerHTML = tableHtml;
+    // Force table to be visible and reset
+    $('#dataTable').show();
     
     // Create column definitions
-    const columns = columnNames.map(columnName => {
-        let width = '15%';
-        if (['month', 'poverty', 'child disability', 'family structure'].includes(columnName)) {
-            width = '10%';
-        } else if (columnName.includes('?')) {
-            width = '25%';
-        }
-        
-        return {
-            data: columnName,
-            width: width,
-            defaultContent: '',
-            render: function(data, type, row) {
-                if (type === 'display' && data && data.length > 150) {
-                    return data.substring(0, 150) + '...';
-                }
-                return data || '';
+    const columns = columnNames.map(columnName => ({
+        title: columnName, // Use original column name as title for now
+        data: columnName,
+        defaultContent: '',
+        render: function(data, type, row) {
+            if (type === 'display' && data && data.length > 150) {
+                return data.substring(0, 150) + '...';
             }
-        };
-    });
+            return data || '';
+        }
+    }));
     
-    // Initialize DataTable
+    // Initialize DataTable with minimal options
     dataTable = $('#dataTable').DataTable({
         data: data,
         columns: columns,
         pageLength: 20,
         scrollX: true,
-        autoWidth: false,
         dom: 'Bfrtip',
         buttons: ['copy', 'csv', 'excel'],
-        order: [[0, 'asc']],
-        columnDefs: [
-            { targets: '_all', className: 'text-left' }
-        ],
         destroy: true,
+        drawCallback: function() {
+            // Force headers to show after each draw
+            $('#dataTable thead').show();
+        },
         initComplete: function() {
-            console.log('DataTable initialized successfully with headers');
+            console.log('DataTable initialized');
+            // Force headers to show
+            $('#dataTable thead').show();
+            $('#dataTable').show();
             document.getElementById('loadingMessage').style.display = 'none';
             document.getElementById('dataTable').style.display = 'table';
-        },
-        error: function(xhr, error, thrown) {
-            console.error('DataTable error:', error, thrown);
-            document.getElementById('loadingMessage').innerHTML = '<p class="text-danger">Error creating table: ' + error + '</p>';
+            
+            // Log header info for debugging
+            console.log('Header count:', $('#dataTable thead th').length);
+            $('#dataTable thead th').each(function(i) {
+                console.log('Header', i, ':', $(this).text());
+            });
         }
     });
 }
