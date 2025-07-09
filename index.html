@@ -720,7 +720,7 @@
             });
         }
 
-        // Create DataTable - FIXED for proper headers and consistent display
+        // Create DataTable - FIXED for proper headers visibility
         function createDataTable(data) {
             // Destroy existing table
             if (dataTable) {
@@ -728,7 +728,7 @@
                 dataTable = null;
             }
             
-            // Clear table
+            // Clear table completely
             $('#dataTable').empty();
             
             if (!data || data.length === 0) {
@@ -742,6 +742,16 @@
             // Get column names from the first data row
             const columnNames = Object.keys(data[0]);
             console.log('Column names:', columnNames);
+            
+            // Manually create table structure with proper headers
+            let tableHTML = '<thead><tr>';
+            columnNames.forEach(columnName => {
+                tableHTML += `<th>${columnName}</th>`;
+            });
+            tableHTML += '</tr></thead><tbody></tbody>';
+            
+            // Set the table HTML
+            $('#dataTable').html(tableHTML);
             
             // Create column definitions
             const columns = columnNames.map(columnName => {
@@ -768,7 +778,7 @@
             
             console.log('Column definitions:', columns);
             
-            // Initialize DataTable
+            // Initialize DataTable with explicit header handling
             dataTable = $('#dataTable').DataTable({
                 data: data,
                 columns: columns,
@@ -782,16 +792,45 @@
                     { targets: '_all', className: 'text-left' }
                 ],
                 destroy: true,
+                headerCallback: function(thead, data, start, end, display) {
+                    // Ensure headers are always visible and properly styled
+                    $(thead).show();
+                    $(thead).find('th').each(function(index) {
+                        $(this).css({
+                            'background-color': '#f8f9fa',
+                            'font-weight': '600',
+                            'border-bottom': '2px solid #dee2e6',
+                            'padding': '12px',
+                            'text-align': 'left'
+                        });
+                    });
+                },
                 drawCallback: function() {
-                    // Ensure headers are visible after each draw
+                    // Ensure headers stay visible after each draw/redraw
                     $('#dataTable thead').show();
+                    $('#dataTable thead th').css({
+                        'background-color': '#f8f9fa',
+                        'font-weight': '600',
+                        'border-bottom': '2px solid #dee2e6'
+                    });
                 },
                 initComplete: function() {
                     console.log('DataTable initialized successfully');
-                    // Force headers to be visible
+                    
+                    // Force headers to be visible and styled
                     $('#dataTable thead').show();
+                    $('#dataTable thead th').css({
+                        'background-color': '#f8f9fa !important',
+                        'font-weight': '600 !important',
+                        'border-bottom': '2px solid #dee2e6 !important',
+                        'padding': '12px !important'
+                    });
+                    
+                    // Show the table
                     document.getElementById('loadingMessage').style.display = 'none';
                     document.getElementById('dataTable').style.display = 'table';
+                    
+                    console.log('Headers should now be visible');
                 },
                 error: function(xhr, error, thrown) {
                     console.error('DataTable error:', error, thrown);
