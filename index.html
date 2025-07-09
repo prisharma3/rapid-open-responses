@@ -466,6 +466,7 @@ function setViewMode(mode) {
 
         // Populate question checkboxes
         // Populate question checkboxes
+// Populate question checkboxes
 function populateQuestionCheckboxes() {
     const container = document.getElementById('questionCheckboxes');
     container.innerHTML = '';
@@ -477,46 +478,67 @@ function populateQuestionCheckboxes() {
     
     // Filter out metadata columns to get only question columns
     const metadataColumns = ['month', 'poverty', 'child disability', 'family structure'];
-    const questionColumns = currentData.headers.filter(header => 
-        !metadataColumns.includes(header.toLowerCase()) && 
-        header.includes('?') // Questions contain question marks
-    );
+    const allQuestions = [];
     
-    console.log('Available question columns:', questionColumns);
+    currentData.headers.forEach(header => {
+        // Skip metadata columns
+        if (metadataColumns.includes(header.toLowerCase())) return;
+        
+        // Only process columns that contain question marks
+        if (!header.includes('?')) return;
+        
+        // Split concatenated questions on the pattern "_1," or similar
+        let questions = [];
+        if (header.includes('"_1,"') || header.includes('_1,"')) {
+            // Split on the pattern and clean each part
+            questions = header.split(/["_\d]+,["]*/).map(q => q.trim().replace(/^["']+|["']+$/g, ''));
+        } else if (header.includes('","')) {
+            // Split on comma-quote pattern
+            questions = header.split('","').map(q => q.trim().replace(/^["']+|["']+$/g, ''));
+        } else {
+            // Single question, just clean it
+            questions = [header.replace(/["'_\d]*$/, '').trim()];
+        }
+        
+        // Add all valid questions
+        questions.forEach(q => {
+            if (q && q.includes('?') && q.length > 10) {
+                allQuestions.push({
+                    original: header, // Keep original for data access
+                    cleaned: q
+                });
+            }
+        });
+    });
     
-    if (questionColumns.length === 0) {
+    console.log('Extracted questions:', allQuestions);
+    
+    if (allQuestions.length === 0) {
         container.innerHTML = '<p class="text-warning">No question columns found in the data.</p>';
         return;
     }
     
-    questionColumns.forEach((question, index) => {
+    allQuestions.forEach((questionObj, index) => {
         const div = document.createElement('div');
         div.className = 'question-checkbox';
         
         const checkbox = document.createElement('input');
         checkbox.type = 'checkbox';
         checkbox.id = `question_${index}`;
-        checkbox.value = question;
+        checkbox.value = questionObj.original;
         checkbox.onchange = updateSelectedQuestions;
         
         const label = document.createElement('label');
         label.htmlFor = `question_${index}`;
-        // Clean display text by removing _1, _2 etc and splitting on quotes
-        let displayText = question.replace(/_\d+$/, '');
-        if (displayText.includes('","')) {
-            displayText = displayText.split('","')[0];
-        }
-        displayText = displayText.replace(/^["']+|["']+$/g, '').trim();
-        
-        label.textContent = displayText;
-        label.title = displayText;
+        label.textContent = questionObj.cleaned;
+        label.title = questionObj.cleaned;
         
         div.appendChild(checkbox);
         div.appendChild(label);
         container.appendChild(div);
     });
     
-    console.log(`Created ${questionColumns.length} question checkboxes`);
+    console.log(`Created ${allQuestions.length} question checkboxes`);
 }
 
         // Update selected questions
@@ -743,6 +765,7 @@ function prepareSelectedQuestionsData() {
         }
 
 // Create DataTable - FIXED for proper headers visibility
+// Create DataTable - FIXED for proper headers visibility
 function createDataTable(data) {
     // Destroy existing table
     if (dataTable) {
@@ -756,112 +779,84 @@ function createDataTable(data) {
     }
     
     console.log('Creating DataTable with', data.length, 'rows');
-    console.log('Sample row:', data[0]);
     
     // Get column names from the first data row
     const columnNames = Object.keys(data[0]);
     console.log('Column names:', columnNames);
     
-// Clear the table but preserve the basic structure for DataTables
-const table = $('#dataTable');
-table.find('thead').empty();
-table.find('tbody').empty();
-
-// Ensure we have the proper table structure
-if (table.find('thead').length === 0) {
-    table.prepend('<thead></thead>');
-}
-if (table.find('tbody').length === 0) {
-    table.append('<tbody></tbody>');
-}
-            
-            // Create column definitions
-            const columns = columnNames.map(columnName => {
-                let width = '12%';
-                if (['month', 'poverty', 'child disability', 'family structure'].includes(columnName)) {
-                    width = '10%';
-                } else if (columnName.length > 50) {
-                    width = '25%'; // Question columns get more space
-                }
-                
-                return {
-                    title: columnName,
-                    data: columnName,
-                    width: width,
-                    defaultContent: '',
-                    render: function(data, type, row) {
-                        if (type === 'display' && data && data.length > 150) {
-                            return data.substring(0, 150) + '...';
+    // Completely rebuild table structure
+    const tableHtml = `
+        <table id="dataTable" class="table table-striped table-bordered">
+            <thead>
+                <tr>
+                    ${columnNames.map(col => {
+                        // Clean column name for display
+                        let displayName = col;
+                        if (col.includes('"_1,"') || col.includes('_1,"')) {
+                            displayName = col.split(/["_\d]+,["]*/).map(q => q.trim().replace(/^["']+|["']+$/g, '')).join(' | ');
+                        } else if (col.includes('","')) {
+                            displayName = col.split('","').map(q => q.trim().replace(/^["']+|["']+$/g, '')).join(' | ');
                         }
-                        return data || '';
-                    }
-                };
-            });
-            
-            console.log('Column definitions:', columns);
-            
-            // Initialize DataTable with explicit header handling
-            dataTable = $('#dataTable').DataTable({
-                data: data,
-                columns: columns,
-                pageLength: 20,
-                scrollX: true,
-                autoWidth: false,
-                dom: 'Bfrtip',
-                buttons: ['copy', 'csv', 'excel'],
-                order: [[0, 'asc']],
-                columnDefs: [
-                    { targets: '_all', className: 'text-left' }
-                ],
-                destroy: true,
-                 processing: false,  // Add this
-    serverSide: false,  // Add this
-                headerCallback: function(thead, data, start, end, display) {
-                    // Ensure headers are always visible and properly styled
-                    $(thead).show();
-                    $(thead).find('th').each(function(index) {
-                        $(this).css({
-                            'background-color': '#f8f9fa',
-                            'font-weight': '600',
-                            'border-bottom': '2px solid #dee2e6',
-                            'padding': '12px',
-                            'text-align': 'left'
-                        });
-                    });
-                },
-                drawCallback: function() {
-                    // Ensure headers stay visible after each draw/redraw
-                    $('#dataTable thead').show();
-                    $('#dataTable thead th').css({
-                        'background-color': '#f8f9fa',
-                        'font-weight': '600',
-                        'border-bottom': '2px solid #dee2e6'
-                    });
-                },
-                initComplete: function() {
-                    console.log('DataTable initialized successfully');
-                    
-                    // Force headers to be visible and styled
-                    $('#dataTable thead').show();
-                    $('#dataTable thead th').css({
-                        'background-color': '#f8f9fa !important',
-                        'font-weight': '600 !important',
-                        'border-bottom': '2px solid #dee2e6 !important',
-                        'padding': '12px !important'
-                    });
-                    
-                    // Show the table
-                    document.getElementById('loadingMessage').style.display = 'none';
-                    document.getElementById('dataTable').style.display = 'table';
-                    
-                    console.log('Headers should now be visible');
-                },
-                error: function(xhr, error, thrown) {
-                    console.error('DataTable error:', error, thrown);
-                    document.getElementById('loadingMessage').innerHTML = '<p class="text-danger">Error creating table: ' + error + '</p>';
-                }
-            });
+                        displayName = displayName.replace(/["'_\d]*$/, '').trim();
+                        
+                        return `<th>${displayName}</th>`;
+                    }).join('')}
+                </tr>
+            </thead>
+            <tbody></tbody>
+        </table>
+    `;
+    
+    // Replace the table
+    document.getElementById('dataTable').outerHTML = tableHtml;
+    
+    // Create column definitions
+    const columns = columnNames.map(columnName => {
+        let width = '15%';
+        if (['month', 'poverty', 'child disability', 'family structure'].includes(columnName)) {
+            width = '10%';
+        } else if (columnName.includes('?')) {
+            width = '25%';
         }
+        
+        return {
+            data: columnName,
+            width: width,
+            defaultContent: '',
+            render: function(data, type, row) {
+                if (type === 'display' && data && data.length > 150) {
+                    return data.substring(0, 150) + '...';
+                }
+                return data || '';
+            }
+        };
+    });
+    
+    // Initialize DataTable
+    dataTable = $('#dataTable').DataTable({
+        data: data,
+        columns: columns,
+        pageLength: 20,
+        scrollX: true,
+        autoWidth: false,
+        dom: 'Bfrtip',
+        buttons: ['copy', 'csv', 'excel'],
+        order: [[0, 'asc']],
+        columnDefs: [
+            { targets: '_all', className: 'text-left' }
+        ],
+        destroy: true,
+        initComplete: function() {
+            console.log('DataTable initialized successfully with headers');
+            document.getElementById('loadingMessage').style.display = 'none';
+            document.getElementById('dataTable').style.display = 'table';
+        },
+        error: function(xhr, error, thrown) {
+            console.error('DataTable error:', error, thrown);
+            document.getElementById('loadingMessage').innerHTML = '<p class="text-danger">Error creating table: ' + error + '</p>';
+        }
+    });
+}
 
         // Initialize
         window.onload = function() {
