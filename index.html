@@ -59,20 +59,10 @@
             vertical-align: top !important;
         }
         
-        /* FIXED: Force table headers to be visible */
-        #dataTable thead {
-            display: table-header-group !important;
-        }
-        
         #dataTable th {
             background-color: #f8f9fa !important;
             font-weight: 600 !important;
             border-bottom: 2px solid #dee2e6 !important;
-            position: sticky !important;
-            top: 0 !important;
-            z-index: 10 !important;
-            padding: 12px !important;
-            display: table-cell !important;
         }
         
         .response-column {
@@ -281,6 +271,8 @@
                     <p>Loading data...</p>
                 </div>
                 <table id="dataTable" class="table table-striped table-bordered" style="display: none;">
+                    <thead></thead>
+                    <tbody></tbody>
                 </table>
             </div>
         </div>
@@ -326,12 +318,13 @@
             return {
                 headers: result.meta.fields,
                 data: result.data.filter(row => {
+                    // Keep rows that have at least one non-empty value
                     return Object.values(row).some(value => value && value.toString().trim() !== '');
                 })
             };
         }
 
-        // Load CSV data
+        // Load CSV data using fetch with better error handling and CSV support
         async function loadCSV(surveyType) {
             console.log(`Loading ${surveyType} survey data...`);
             
@@ -345,17 +338,20 @@
                 
                 console.log(`Attempting to fetch: ${filename}`);
                 
+                // Use fetch with explicit headers for CSV files
                 const response = await fetch(filename, {
                     method: 'GET',
                     headers: {
                         'Accept': 'text/csv, text/plain, */*'
                     },
-                    cache: 'no-cache'
+                    cache: 'no-cache'  // Prevent caching issues
                 });
                 
                 console.log(`Response status: ${response.status}`);
+                console.log(`Response headers:`, response.headers);
                 
                 if (!response.ok) {
+                    // Try alternative path without ./data/ prefix
                     const altFilename = filename.replace('./data/', '');
                     console.log(`Trying alternative path: ${altFilename}`);
                     
@@ -368,7 +364,7 @@
                     });
                     
                     if (!altResponse.ok) {
-                        throw new Error(`File not found at ${filename} or ${altFilename}`);
+                        throw new Error(`HTTP error! status: ${response.status}. File not found at ${filename} or ${altFilename}`);
                     }
                     
                     const csvData = await altResponse.text();
@@ -378,12 +374,22 @@
                 }
                 
                 const csvData = await response.text();
+                console.log(`CSV data length: ${csvData.length} characters`);
+                console.log(`First 200 characters:`, csvData.substring(0, 200));
+                
                 const parsed = parseCSV(csvData);
+                
                 console.log(`Successfully loaded ${surveyType} data:`, parsed.data.length, 'rows');
                 return parsed;
                 
             } catch (error) {
                 console.error(`Error loading ${surveyType} data:`, error);
+                console.error(`Full error details:`, error.message);
+                
+                // Try to provide helpful debugging info
+                console.log(`Current URL: ${window.location.href}`);
+                console.log(`Base URL: ${window.location.origin}${window.location.pathname}`);
+                
                 throw new Error(`Failed to load ${surveyType} survey data: ${error.message}`);
             }
         }
@@ -392,9 +398,11 @@
         async function loadSurveyType(type) {
             currentSurveyType = type;
             
+            // Update button states
             document.getElementById('householdBtn').className = type === 'household' ? 'btn btn-primary' : 'btn btn-outline-primary';
             document.getElementById('providerBtn').className = type === 'provider' ? 'btn btn-primary' : 'btn btn-outline-primary';
             
+            // Hide subsequent cards
             document.getElementById('tableCard').style.display = 'none';
             document.getElementById('questionCard').style.display = 'none';
             document.getElementById('filtersCard').style.display = 'none';
@@ -406,6 +414,7 @@
                     document.getElementById('viewModeCard').style.display = 'block';
                     populateMetadataFilters();
                     
+                    // Show/hide household-specific filters
                     document.getElementById('childDisabilityFilter').style.display = type === 'household' ? 'block' : 'none';
                     document.getElementById('familyStructureFilter').style.display = type === 'household' ? 'block' : 'none';
                     
@@ -424,6 +433,7 @@
         function setViewMode(mode) {
             viewMode = mode;
             
+            // Update button states
             document.getElementById('viewAllBtn').className = mode === 'all' ? 'btn btn-secondary' : 'btn btn-outline-secondary';
             document.getElementById('selectQuestionsBtn').className = mode === 'select' ? 'btn btn-secondary' : 'btn btn-outline-secondary';
             
@@ -447,12 +457,13 @@
                 return;
             }
             
+            // Filter out metadata columns to get only question columns
             const metadataColumns = ['month', 'poverty', 'child disability', 'family structure'];
             const questionColumns = currentData.headers.filter(header => 
                 !metadataColumns.includes(header) && 
                 !header.startsWith('TIMER') && 
                 !header.startsWith('OPEN.') &&
-                header.includes('?')
+                header.includes('?') // Questions typically contain question marks
             );
             
             console.log('Available question columns:', questionColumns);
@@ -495,6 +506,7 @@
             const loadBtn = document.getElementById('loadQuestionsBtn');
             loadBtn.disabled = selectedQuestions.length === 0;
             
+            // Update selected questions display
             const selectedDiv = document.getElementById('selectedQuestions');
             const listDiv = document.getElementById('selectedQuestionsList');
             
@@ -564,7 +576,7 @@
             createDataTable(tableData);
         }
 
-        // Prepare data for selected questions
+        // Prepare data for selected questions - FIXED to properly filter responses
         function prepareSelectedQuestionsData() {
             if (!currentData || !currentData.data) {
                 console.error('No current data available');
@@ -579,6 +591,7 @@
             const filteredData = [];
             
             currentData.data.forEach((row, index) => {
+                // Check if this row has responses to ANY of the selected questions
                 const hasResponse = selectedQuestions.some(question => {
                     const value = row[question];
                     return value && value.toString().trim() !== '' && value.toString().trim() !== 'NA';
@@ -587,12 +600,14 @@
                 if (hasResponse) {
                     const tableRow = {};
                     
+                    // Add metadata columns first
                     metadataColumns.forEach(col => {
                         if (row.hasOwnProperty(col)) {
                             tableRow[col] = row[col] || '';
                         }
                     });
                     
+                    // Add selected question responses
                     selectedQuestions.forEach(question => {
                         const value = row[question];
                         tableRow[question] = (value && value.toString().trim() !== '' && value.toString().trim() !== 'NA') ? value : '';
@@ -606,7 +621,7 @@
             return filteredData;
         }
 
-        // Prepare all data
+        // Prepare all data - FIXED (no ID column)
         function prepareAllData() {
             if (!currentData || !currentData.data) {
                 console.error('No current data available');
@@ -618,6 +633,7 @@
             currentData.data.forEach((row, index) => {
                 const tableRow = {};
                 
+                // Add all columns except TIMER and OPEN columns (no artificial ID)
                 Object.keys(row).forEach(key => {
                     if (!key.startsWith('TIMER') && !key.startsWith('OPEN.')) {
                         tableRow[key] = row[key] || '';
@@ -637,16 +653,20 @@
             
             console.log('Populating metadata filters...');
             
+            // Month filter
             const months = [...new Set(currentData.data.map(row => row.month).filter(m => m && m.trim() !== ''))];
             populateSelect('monthFilter', months.sort());
             
+            // Poverty filter
             const povertyValues = [...new Set(currentData.data.map(row => row.poverty).filter(p => p && p.trim() !== ''))];
             populateSelect('povertyFilter', povertyValues.sort());
             
             if (currentSurveyType === 'household') {
+                // Child disability filter
                 const disabilityValues = [...new Set(currentData.data.map(row => row['child disability']).filter(d => d && d.trim() !== ''))];
                 populateSelect('disabilityFilter', disabilityValues.sort());
                 
+                // Family structure filter
                 const structureValues = [...new Set(currentData.data.map(row => row['family structure']).filter(s => s && s.trim() !== ''))];
                 populateSelect('structureFilter', structureValues.sort());
             }
@@ -658,6 +678,8 @@
             if (!select) return;
             
             const currentValue = select.value;
+            
+            // Keep the "All" option and add new options
             select.innerHTML = select.children[0].outerHTML;
             
             values.forEach(value => {
@@ -672,7 +694,7 @@
             select.value = currentValue;
         }
 
-        // FIXED: Apply filters with exact matching
+        // Apply filters
         function applyFilters() {
             if (!dataTable) return;
             
@@ -681,18 +703,22 @@
             const disabilityFilter = document.getElementById('disabilityFilter')?.value || '';
             const structureFilter = document.getElementById('structureFilter')?.value || '';
             
-            console.log('Applying filters:', { monthFilter, povertyFilter, disabilityFilter, structureFilter });
-            
-            // Clear all existing searches first
-            dataTable.search('').columns().search('').draw();
-            
-            // Apply column filters with exact matching
+            // Apply column filters
             dataTable.columns().every(function() {
                 const column = this;
                 const header = column.header().textContent;
                 
-                let searchValue = '';
+                // let searchValue = '';
+                // if (header === 'month' && monthFilter) searchValue = monthFilter;
+                // else if (header === 'poverty' && povertyFilter) searchValue = povertyFilter;
+                // else if (header === 'child disability' && disabilityFilter) searchValue = disabilityFilter;
+                // else if (header === 'family structure' && structureFilter) searchValue = structureFilter;
                 
+                // if (column.search() !== searchValue) {
+                //     column.search(searchValue).draw();
+                // }
+
+                 let searchValue = '';
                 if (header === 'month' && monthFilter) {
                     searchValue = '^' + monthFilter.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '$';
                 } else if (header === 'poverty' && povertyFilter) {
@@ -703,21 +729,22 @@
                     searchValue = '^' + structureFilter.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '$';
                 }
                 
-                if (searchValue !== '') {
-                    console.log(`Setting filter for ${header}: ${searchValue}`);
-                    column.search(searchValue, true, false);
+                if (column.search() !== searchValue) {
+                    column.search(searchValue, true, false).draw(); // true for regex, false for smart search
                 }
             });
-            
-            dataTable.draw();
         }
 
-        // FIXED: Create DataTable with proper headers
+        // Create DataTable - FIXED for proper headers visibility
         function createDataTable(data) {
+            // Destroy existing table
             if (dataTable) {
                 dataTable.destroy();
                 dataTable = null;
             }
+            
+            // Clear table completely
+            $('#dataTable').empty();
             
             if (!data || data.length === 0) {
                 document.getElementById('loadingMessage').innerHTML = '<p class="text-warning">No data available to display.</p>';
@@ -725,57 +752,48 @@
             }
             
             console.log('Creating DataTable with', data.length, 'rows');
+            console.log('Sample row:', data[0]);
             
+            // Get column names from the first data row
             const columnNames = Object.keys(data[0]);
             console.log('Column names:', columnNames);
             
-            // Create table structure manually
-            const tableElement = document.getElementById('dataTable');
-            tableElement.innerHTML = '';
-            
-            // Create thead
-            const thead = document.createElement('thead');
-            const headerRow = document.createElement('tr');
-            
+            // Manually create table structure with proper headers
+            let tableHTML = '<thead><tr>';
             columnNames.forEach(columnName => {
-                const th = document.createElement('th');
-                th.textContent = columnName;
-                th.style.cssText = `
-                    background-color: #f8f9fa !important;
-                    font-weight: 600 !important;
-                    border-bottom: 2px solid #dee2e6 !important;
-                    position: sticky !important;
-                    top: 0 !important;
-                    z-index: 10 !important;
-                    padding: 12px !important;
-                    display: table-cell !important;
-                `;
-                headerRow.appendChild(th);
+                tableHTML += `<th>${columnName}</th>`;
             });
+            tableHTML += '</tr></thead><tbody></tbody>';
             
-            thead.appendChild(headerRow);
-            tableElement.appendChild(thead);
-            
-            // Create tbody
-            const tbody = document.createElement('tbody');
-            tableElement.appendChild(tbody);
+            // Set the table HTML
+            $('#dataTable').html(tableHTML);
             
             // Create column definitions
-            const columns = columnNames.map(columnName => ({
-                title: columnName,
-                data: columnName,
-                defaultContent: '',
-                render: function(data, type, row) {
-                    if (type === 'display' && data && data.length > 150) {
-                        return data.substring(0, 150) + '...';
-                    }
-                    return data || '';
+            const columns = columnNames.map(columnName => {
+                let width = '12%';
+                if (['month', 'poverty', 'child disability', 'family structure'].includes(columnName)) {
+                    width = '10%';
+                } else if (columnName.length > 50) {
+                    width = '25%'; // Question columns get more space
                 }
-            }));
+                
+                return {
+                    title: columnName,
+                    data: columnName,
+                    width: width,
+                    defaultContent: '',
+                    render: function(data, type, row) {
+                        if (type === 'display' && data && data.length > 150) {
+                            return data.substring(0, 150) + '...';
+                        }
+                        return data || '';
+                    }
+                };
+            });
             
-            console.log('Initializing DataTable');
+            console.log('Column definitions:', columns);
             
-            // Initialize DataTable
+            // Initialize DataTable with explicit header handling
             dataTable = $('#dataTable').DataTable({
                 data: data,
                 columns: columns,
@@ -785,50 +803,49 @@
                 dom: 'Bfrtip',
                 buttons: ['copy', 'csv', 'excel'],
                 order: [[0, 'asc']],
+                columnDefs: [
+                    { targets: '_all', className: 'text-left' }
+                ],
                 destroy: true,
-                paging: true,
-                searching: true,
-                ordering: true,
-                info: true,
-                drawCallback: function() {
-                    // Ensure headers stay visible
-                    $('#dataTable thead').show();
-                    $('#dataTable thead th').each(function() {
+                headerCallback: function(thead, data, start, end, display) {
+                    // Ensure headers are always visible and properly styled
+                    $(thead).show();
+                    $(thead).find('th').each(function(index) {
                         $(this).css({
-                            'background-color': '#f8f9fa !important',
-                            'font-weight': '600 !important',
-                            'border-bottom': '2px solid #dee2e6 !important',
-                            'position': 'sticky !important',
-                            'top': '0 !important',
-                            'z-index': '10 !important',
-                            'padding': '12px !important',
-                            'display': 'table-cell !important'
+                            'background-color': '#f8f9fa',
+                            'font-weight': '600',
+                            'border-bottom': '2px solid #dee2e6',
+                            'padding': '12px',
+                            'text-align': 'left'
                         });
+                    });
+                },
+                drawCallback: function() {
+                    // Ensure headers stay visible after each draw/redraw
+                    $('#dataTable thead').show();
+                    $('#dataTable thead th').css({
+                        'background-color': '#f8f9fa',
+                        'font-weight': '600',
+                        'border-bottom': '2px solid #dee2e6'
                     });
                 },
                 initComplete: function() {
                     console.log('DataTable initialized successfully');
                     
-                    // Force headers to be visible
+                    // Force headers to be visible and styled
                     $('#dataTable thead').show();
-                    $('#dataTable thead th').each(function() {
-                        $(this).css({
-                            'background-color': '#f8f9fa !important',
-                            'font-weight': '600 !important',
-                            'border-bottom': '2px solid #dee2e6 !important',
-                            'position': 'sticky !important',
-                            'top': '0 !important',
-                            'z-index': '10 !important',
-                            'padding': '12px !important',
-                            'display': 'table-cell !important'
-                        });
+                    $('#dataTable thead th').css({
+                        'background-color': '#f8f9fa !important',
+                        'font-weight': '600 !important',
+                        'border-bottom': '2px solid #dee2e6 !important',
+                        'padding': '12px !important'
                     });
                     
                     // Show the table
                     document.getElementById('loadingMessage').style.display = 'none';
                     document.getElementById('dataTable').style.display = 'table';
                     
-                    console.log('Table should now be visible with headers');
+                    console.log('Headers should now be visible');
                 },
                 error: function(xhr, error, thrown) {
                     console.error('DataTable error:', error, thrown);
