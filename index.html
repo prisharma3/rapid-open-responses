@@ -707,16 +707,6 @@
             dataTable.columns().every(function() {
                 const column = this;
                 const header = column.header().textContent;
-                
-                // let searchValue = '';
-                // if (header === 'month' && monthFilter) searchValue = monthFilter;
-                // else if (header === 'poverty' && povertyFilter) searchValue = povertyFilter;
-                // else if (header === 'child disability' && disabilityFilter) searchValue = disabilityFilter;
-                // else if (header === 'family structure' && structureFilter) searchValue = structureFilter;
-                
-                // if (column.search() !== searchValue) {
-                //     column.search(searchValue).draw();
-                // }
 
                  let searchValue = '';
                 if (header === 'month' && monthFilter) {
@@ -735,38 +725,29 @@
             });
         }
 
-        // Create DataTable - FIXED for proper headers visibility
-        function createDataTable(data) {
-            // Destroy existing table
-            if (dataTable) {
-                dataTable.destroy();
-                dataTable = null;
-            }
-            
-            // Clear table completely
-            $('#dataTable').empty();
-            
-            if (!data || data.length === 0) {
-                document.getElementById('loadingMessage').innerHTML = '<p class="text-warning">No data available to display.</p>';
-                return;
-            }
-            
-            console.log('Creating DataTable with', data.length, 'rows');
-            console.log('Sample row:', data[0]);
-            
-            // Get column names from the first data row
-            const columnNames = Object.keys(data[0]);
-            console.log('Column names:', columnNames);
-            
-            // Manually create table structure with proper headers
-            let tableHTML = '<thead><tr>';
-            columnNames.forEach(columnName => {
-                tableHTML += `<th>${columnName}</th>`;
-            });
-            tableHTML += '</tr></thead><tbody></tbody>';
-            
-            // Set the table HTML
-            $('#dataTable').html(tableHTML);
+// Create DataTable - FIXED for proper headers visibility
+function createDataTable(data) {
+    // Destroy existing table
+    if (dataTable) {
+        dataTable.destroy();
+        dataTable = null;
+    }
+    
+    if (!data || data.length === 0) {
+        document.getElementById('loadingMessage').innerHTML = '<p class="text-warning">No data available to display.</p>';
+        return;
+    }
+    
+    console.log('Creating DataTable with', data.length, 'rows');
+    console.log('Sample row:', data[0]);
+    
+    // Get column names from the first data row
+    const columnNames = Object.keys(data[0]);
+    console.log('Column names:', columnNames);
+    
+    // Don't manually create HTML - let DataTables handle it
+    // Just ensure the table has basic structure
+    $('#dataTable').html('<thead></thead><tbody></tbody>');
             
             // Create column definitions
             const columns = columnNames.map(columnName => {
