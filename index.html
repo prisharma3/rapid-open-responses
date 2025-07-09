@@ -324,24 +324,59 @@
             };
         }
 
-        // Load CSV data using fetch for web deployment
+        // Load CSV data using fetch with better error handling and CSV support
         async function loadCSV(surveyType) {
             console.log(`Loading ${surveyType} survey data...`);
             
             try {
                 let filename;
                 if (surveyType === 'household') {
-                    filename = 'data/ec-open_data_consent_filteredt_100_rows.csv';
+                    filename = './data/ec-open_data_consent_filteredt_100_rows.csv';
                 } else {
-                    filename = 'data/cc_open_data_consent_filteredt_100_rows.csv';
+                    filename = './data/cc_open_data_consent_filteredt_100_rows.csv';
                 }
                 
-                // Use fetch to load CSV files for web deployment
-                const response = await fetch(filename);
+                console.log(`Attempting to fetch: ${filename}`);
+                
+                // Use fetch with explicit headers for CSV files
+                const response = await fetch(filename, {
+                    method: 'GET',
+                    headers: {
+                        'Accept': 'text/csv, text/plain, */*'
+                    },
+                    cache: 'no-cache'  // Prevent caching issues
+                });
+                
+                console.log(`Response status: ${response.status}`);
+                console.log(`Response headers:`, response.headers);
+                
                 if (!response.ok) {
-                    throw new Error(`HTTP error! status: ${response.status}`);
+                    // Try alternative path without ./data/ prefix
+                    const altFilename = filename.replace('./data/', '');
+                    console.log(`Trying alternative path: ${altFilename}`);
+                    
+                    const altResponse = await fetch(altFilename, {
+                        method: 'GET',
+                        headers: {
+                            'Accept': 'text/csv, text/plain, */*'
+                        },
+                        cache: 'no-cache'
+                    });
+                    
+                    if (!altResponse.ok) {
+                        throw new Error(`HTTP error! status: ${response.status}. File not found at ${filename} or ${altFilename}`);
+                    }
+                    
+                    const csvData = await altResponse.text();
+                    const parsed = parseCSV(csvData);
+                    console.log(`Successfully loaded ${surveyType} data from alternative path:`, parsed.data.length, 'rows');
+                    return parsed;
                 }
+                
                 const csvData = await response.text();
+                console.log(`CSV data length: ${csvData.length} characters`);
+                console.log(`First 200 characters:`, csvData.substring(0, 200));
+                
                 const parsed = parseCSV(csvData);
                 
                 console.log(`Successfully loaded ${surveyType} data:`, parsed.data.length, 'rows');
@@ -349,6 +384,12 @@
                 
             } catch (error) {
                 console.error(`Error loading ${surveyType} data:`, error);
+                console.error(`Full error details:`, error.message);
+                
+                // Try to provide helpful debugging info
+                console.log(`Current URL: ${window.location.href}`);
+                console.log(`Base URL: ${window.location.origin}${window.location.pathname}`);
+                
                 throw new Error(`Failed to load ${surveyType} survey data: ${error.message}`);
             }
         }
