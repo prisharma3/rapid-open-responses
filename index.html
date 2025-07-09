@@ -298,7 +298,6 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 
     <script>
-
         let currentData = null;
         let currentSurveyType = null;
         let dataTable = null;
@@ -327,13 +326,12 @@
             return {
                 headers: result.meta.fields,
                 data: result.data.filter(row => {
-                    // Keep rows that have at least one non-empty value
                     return Object.values(row).some(value => value && value.toString().trim() !== '');
                 })
             };
         }
 
-        // Load CSV data using fetch with better error handling and CSV support
+        // Load CSV data
         async function loadCSV(surveyType) {
             console.log(`Loading ${surveyType} survey data...`);
             
@@ -347,19 +345,17 @@
                 
                 console.log(`Attempting to fetch: ${filename}`);
                 
-                // Use fetch with explicit headers for CSV files
                 const response = await fetch(filename, {
                     method: 'GET',
                     headers: {
                         'Accept': 'text/csv, text/plain, */*'
                     },
-                    cache: 'no-cache'  // Prevent caching issues
+                    cache: 'no-cache'
                 });
                 
                 console.log(`Response status: ${response.status}`);
                 
                 if (!response.ok) {
-                    // Try alternative path without ./data/ prefix
                     const altFilename = filename.replace('./data/', '');
                     console.log(`Trying alternative path: ${altFilename}`);
                     
@@ -372,7 +368,7 @@
                     });
                     
                     if (!altResponse.ok) {
-                        throw new Error(`HTTP error! status: ${response.status}. File not found at ${filename} or ${altFilename}`);
+                        throw new Error(`File not found at ${filename} or ${altFilename}`);
                     }
                     
                     const csvData = await altResponse.text();
@@ -382,10 +378,7 @@
                 }
                 
                 const csvData = await response.text();
-                console.log(`CSV data length: ${csvData.length} characters`);
-                
                 const parsed = parseCSV(csvData);
-                
                 console.log(`Successfully loaded ${surveyType} data:`, parsed.data.length, 'rows');
                 return parsed;
                 
@@ -399,11 +392,9 @@
         async function loadSurveyType(type) {
             currentSurveyType = type;
             
-            // Update button states
             document.getElementById('householdBtn').className = type === 'household' ? 'btn btn-primary' : 'btn btn-outline-primary';
             document.getElementById('providerBtn').className = type === 'provider' ? 'btn btn-primary' : 'btn btn-outline-primary';
             
-            // Hide subsequent cards
             document.getElementById('tableCard').style.display = 'none';
             document.getElementById('questionCard').style.display = 'none';
             document.getElementById('filtersCard').style.display = 'none';
@@ -415,7 +406,6 @@
                     document.getElementById('viewModeCard').style.display = 'block';
                     populateMetadataFilters();
                     
-                    // Show/hide household-specific filters
                     document.getElementById('childDisabilityFilter').style.display = type === 'household' ? 'block' : 'none';
                     document.getElementById('familyStructureFilter').style.display = type === 'household' ? 'block' : 'none';
                     
@@ -434,7 +424,6 @@
         function setViewMode(mode) {
             viewMode = mode;
             
-            // Update button states
             document.getElementById('viewAllBtn').className = mode === 'all' ? 'btn btn-secondary' : 'btn btn-outline-secondary';
             document.getElementById('selectQuestionsBtn').className = mode === 'select' ? 'btn btn-secondary' : 'btn btn-outline-secondary';
             
@@ -458,13 +447,12 @@
                 return;
             }
             
-            // Filter out metadata columns to get only question columns
             const metadataColumns = ['month', 'poverty', 'child disability', 'family structure'];
             const questionColumns = currentData.headers.filter(header => 
                 !metadataColumns.includes(header) && 
                 !header.startsWith('TIMER') && 
                 !header.startsWith('OPEN.') &&
-                header.includes('?') // Questions typically contain question marks
+                header.includes('?')
             );
             
             console.log('Available question columns:', questionColumns);
@@ -507,7 +495,6 @@
             const loadBtn = document.getElementById('loadQuestionsBtn');
             loadBtn.disabled = selectedQuestions.length === 0;
             
-            // Update selected questions display
             const selectedDiv = document.getElementById('selectedQuestions');
             const listDiv = document.getElementById('selectedQuestionsList');
             
@@ -592,7 +579,6 @@
             const filteredData = [];
             
             currentData.data.forEach((row, index) => {
-                // Check if this row has responses to ANY of the selected questions
                 const hasResponse = selectedQuestions.some(question => {
                     const value = row[question];
                     return value && value.toString().trim() !== '' && value.toString().trim() !== 'NA';
@@ -601,14 +587,12 @@
                 if (hasResponse) {
                     const tableRow = {};
                     
-                    // Add metadata columns first
                     metadataColumns.forEach(col => {
                         if (row.hasOwnProperty(col)) {
                             tableRow[col] = row[col] || '';
                         }
                     });
                     
-                    // Add selected question responses
                     selectedQuestions.forEach(question => {
                         const value = row[question];
                         tableRow[question] = (value && value.toString().trim() !== '' && value.toString().trim() !== 'NA') ? value : '';
@@ -634,7 +618,6 @@
             currentData.data.forEach((row, index) => {
                 const tableRow = {};
                 
-                // Add all columns except TIMER and OPEN columns
                 Object.keys(row).forEach(key => {
                     if (!key.startsWith('TIMER') && !key.startsWith('OPEN.')) {
                         tableRow[key] = row[key] || '';
@@ -654,20 +637,16 @@
             
             console.log('Populating metadata filters...');
             
-            // Month filter
             const months = [...new Set(currentData.data.map(row => row.month).filter(m => m && m.trim() !== ''))];
             populateSelect('monthFilter', months.sort());
             
-            // Poverty filter
             const povertyValues = [...new Set(currentData.data.map(row => row.poverty).filter(p => p && p.trim() !== ''))];
             populateSelect('povertyFilter', povertyValues.sort());
             
             if (currentSurveyType === 'household') {
-                // Child disability filter
                 const disabilityValues = [...new Set(currentData.data.map(row => row['child disability']).filter(d => d && d.trim() !== ''))];
                 populateSelect('disabilityFilter', disabilityValues.sort());
                 
-                // Family structure filter
                 const structureValues = [...new Set(currentData.data.map(row => row['family structure']).filter(s => s && s.trim() !== ''))];
                 populateSelect('structureFilter', structureValues.sort());
             }
@@ -679,8 +658,6 @@
             if (!select) return;
             
             const currentValue = select.value;
-            
-            // Keep the "All" option and add new options
             select.innerHTML = select.children[0].outerHTML;
             
             values.forEach(value => {
@@ -709,7 +686,7 @@
             // Clear all existing searches first
             dataTable.search('').columns().search('').draw();
             
-            // Apply column filters with exact matching using regex
+            // Apply column filters with exact matching
             dataTable.columns().every(function() {
                 const column = this;
                 const header = column.header().textContent;
@@ -722,7 +699,7 @@
                     searchValue = '^' + povertyFilter.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '$';
                 } else if (header === 'child disability' && disabilityFilter) {
                     searchValue = '^' + disabilityFilter.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '$';
-                } } else if (header === 'family structure' && structureFilter) {
+                } else if (header === 'family structure' && structureFilter) {
                     searchValue = '^' + structureFilter.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '$';
                 }
                 
@@ -732,13 +709,11 @@
                 }
             });
             
-            // Draw the table with all filters applied
             dataTable.draw();
         }
 
-        // FIXED: Create DataTable with proper headers and complete functionality
+        // FIXED: Create DataTable with proper headers
         function createDataTable(data) {
-            // Destroy existing table completely
             if (dataTable) {
                 dataTable.destroy();
                 dataTable = null;
@@ -751,15 +726,14 @@
             
             console.log('Creating DataTable with', data.length, 'rows');
             
-            // Get column names
             const columnNames = Object.keys(data[0]);
             console.log('Column names:', columnNames);
             
-            // Create table structure manually with proper headers
+            // Create table structure manually
             const tableElement = document.getElementById('dataTable');
             tableElement.innerHTML = '';
             
-            // Create and append thead
+            // Create thead
             const thead = document.createElement('thead');
             const headerRow = document.createElement('tr');
             
@@ -782,7 +756,7 @@
             thead.appendChild(headerRow);
             tableElement.appendChild(thead);
             
-            // Create and append tbody
+            // Create tbody
             const tbody = document.createElement('tbody');
             tableElement.appendChild(tbody);
             
@@ -799,7 +773,7 @@
                 }
             }));
             
-            console.log('Initializing DataTable with columns:', columns.length);
+            console.log('Initializing DataTable');
             
             // Initialize DataTable
             dataTable = $('#dataTable').DataTable({
@@ -817,7 +791,7 @@
                 ordering: true,
                 info: true,
                 drawCallback: function() {
-                    // Ensure headers stay visible on every draw
+                    // Ensure headers stay visible
                     $('#dataTable thead').show();
                     $('#dataTable thead th').each(function() {
                         $(this).css({
@@ -855,7 +829,6 @@
                     document.getElementById('dataTable').style.display = 'table';
                     
                     console.log('Table should now be visible with headers');
-                    console.log('Headers HTML:', $('#dataTable thead')[0].outerHTML);
                 },
                 error: function(xhr, error, thrown) {
                     console.error('DataTable error:', error, thrown);
@@ -869,7 +842,6 @@
             console.log('Page loaded, initializing...');
             loadSurveyType('household');
         };
-
-        </script>
+    </script>
 </body>
 </html>
